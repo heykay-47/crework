@@ -49,7 +49,7 @@
 ## [OUTCOMES]
 
 - 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Implementation committed as `a561bb2`.
-- 2026-09-17T18:45:07Z [TOOL] Issue #14 implementation completed pending commit bookkeeping: public deterministic frame selection, strict extraction records, per-attempt ledger persistence, nonterminal FFmpeg handling, CLI output, tests, and README documentation are complete; both canonical required frames were visually inspected.
+- 2026-09-17T18:45:07Z [TOOL] Issue #14 implementation committed as `8a1adba`: public deterministic frame selection, strict extraction records, per-attempt ledger persistence, nonterminal FFmpeg handling, CLI output, tests, and README documentation are complete; both canonical required frames were visually inspected.
 - 2026-09-17T17:05:00Z [TOOL] Issue #13 implementation committed as `77ce39a`: canonical fixture SHA `f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc`, duration `360.026667`, frozen manifest `canonical-six-case-v3`, and retained live semantic pass in `output/live-v12/result.json`.
 - 2026-09-17T13:53:32Z [TOOL] Issue #11 implementation passed Docker build, 28 tests, strict mypy, and two-axis review; committed as `aff206b` and ready for issue closure.
 - 2026-09-17T08:53:02Z [TOOL] [MILESTONE] Wayfinding completed at issue #1; schema, policy, approval safety, evidence, and proof contracts are linked from the closed map.
