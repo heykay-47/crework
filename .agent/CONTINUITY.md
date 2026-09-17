@@ -29,4 +29,4 @@
 ## [OUTCOMES]
 
 - 2026-09-17T08:53:02Z [TOOL] [MILESTONE] Wayfinding completed at issue #1; schema, policy, approval safety, evidence, and proof contracts are linked from the closed map.
-- 2026-09-17T13:08:52Z [CODE] Issue #10 implementation is complete and reviewed; commit and issue closure remain before advancing the graph.
+- 2026-09-17T13:08:52Z [TOOL] Issue #10 is implemented in commit `f7a256d`, reviewed, verified, and closed; the next frontier should be recomputed from issues #11–#19.
