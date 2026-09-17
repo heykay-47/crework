@@ -7,6 +7,7 @@
 
 ## [DECISIONS]
 
+- 2026-09-17T17:39:14Z [USER] Future commits in `crework` use GitHub identity `heykay-47 <krithick008@proton.me>` via repository-local Git configuration.
 - 2026-09-17T14:35:10Z [CODE] Issue #12 keeps malformed shape/value failures at the verified-output boundary as `output_invalid`; deterministic cross-field, topic, duplicate-ID/group, and duration checks fail the whole analysis as `policy_failed`.
 - 2026-09-17T14:35:10Z [CODE] Policy results are recomputed from verified analysis and FFprobe duration, then atomically stored on the same Run Ledger attempt under `policy_result`; policy failures remove routes and settle that attempt as failed.
 - 2026-09-17T16:20:00Z [CODE] Issue #13 ground-truth text constraints use required/forbidden semantic terms rather than exact prose; authored Evidence Span midpoints are checked against the result's own topic windows, and undeclared extra Withheld Results fail scoring.
