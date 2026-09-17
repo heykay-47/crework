@@ -2,10 +2,13 @@
 
 ## [PLANS]
 
+- 2026-09-17T14:22:24Z [USER] Implement GitHub issue #12 with TDD at the settled policy seam, run final checks and `/code-review`, then commit on the current branch.
 - 2026-09-17T09:30:57Z [USER] Implement approved GitHub issues #10–#19 in dependency order; issue #10 is the first tracer bullet.
 
 ## [DECISIONS]
 
+- 2026-09-17T14:35:10Z [CODE] Issue #12 keeps malformed shape/value failures at the verified-output boundary as `output_invalid`; deterministic cross-field, topic, duplicate-ID/group, and duration checks fail the whole analysis as `policy_failed`.
+- 2026-09-17T14:35:10Z [CODE] Policy results are recomputed from verified analysis and FFprobe duration, then atomically stored on the same Run Ledger attempt under `policy_result`; policy failures remove routes and settle that attempt as failed.
 - 2026-09-17T13:53:32Z [CODE] Issue #11 normal reruns reconcile the latest persisted attempt or reuse its verified result; only explicit `--reanalyze` may append after all prior attempts settle, and every attempt remains in ledger history.
 - 2026-09-17T08:53:02Z [USER] [MILESTONE] Closed Wayfinder map #1 is the authoritative risk-first addendum and supersedes conflicting `HANDOFF.md` details.
 - 2026-09-17T09:24:43Z [USER] Approved the ten-ticket implementation graph exactly as published in issues #10–#19.
@@ -16,6 +19,8 @@
 
 ## [PROGRESS]
 
+- 2026-09-17T14:35:10Z [CODE] Implemented deterministic Observation validation, duplicate grouping, evidence normalization/frame selection, stable Candidate IDs, ordered routes, CLI/Run Ledger integration, and policy documentation for issue #12.
+- 2026-09-17T14:35:10Z [TOOL] Focused policy, triage, and recovery tests pass (31 tests); strict mypy passes across source and tests. Final full suite, container build, review, and commit remain.
 - 2026-09-17T13:53:32Z [CODE] Implemented issue #11 recovery: exact-ID retrieval, bounded idempotent retries with `Retry-After`, stable failure handling, independent replacement attempts, and CLI/docs/tests for `--reanalyze`.
 - 2026-09-17T13:53:32Z [TOOL] Two-axis `/code-review` found stale-result admission, post-ID interruption, terminal replacement, and deadline bugs; all correctness findings were addressed and re-reviewed.
 - 2026-09-17T09:30:57Z [TOOL] [MILESTONE] Published issues #10–#19 with verified blocking edges; #10 was the sole initial frontier.
@@ -24,6 +29,7 @@
 
 ## [DISCOVERIES]
 
+- 2026-09-17T14:42:25Z [TOOL] The first final-suite run exposed obsolete input-boundary tests that still expected timestamp semantics to be Pydantic failures; those cases now live at the policy seam so they classify as `policy_failed`.
 - 2026-09-17T13:53:32Z [CODE] Stream exceptions after `interaction.created` must leave the attempt recoverable; only failures before an ID exists can be settled as creation-unrecoverable without exact-ID retrieval.
 - 2026-09-17T04:36:36Z [TOOL] Gemini 3.5 Flash-Lite rejects background interactions but supports the stored-stream fallback with completed retrieval and processing proof.
 - 2026-09-17T13:08:52Z [TOOL] `google-genai==2.24.0` requires nested `response_format.text`; agentic output still needed an explicit exact JSON shape in the prompt to reliably satisfy the schema.
@@ -32,6 +38,7 @@
 
 ## [OUTCOMES]
 
+- 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Commit remains.
 - 2026-09-17T13:53:32Z [TOOL] Issue #11 implementation passed Docker build, 28 tests, strict mypy, and two-axis review; committed as `aff206b` and ready for issue closure.
 - 2026-09-17T08:53:02Z [TOOL] [MILESTONE] Wayfinding completed at issue #1; schema, policy, approval safety, evidence, and proof contracts are linked from the closed map.
 - 2026-09-17T13:08:52Z [TOOL] Issue #10 is implemented in commit `f7a256d`, reviewed, verified, and closed; the next frontier should be recomputed from issues #11–#19.

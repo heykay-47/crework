@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from collections.abc import Sequence
 
@@ -71,3 +72,28 @@ def test_schema_is_validated_after_completion_and_processing_proof() -> None:
 
     with pytest.raises(ValidationError):
         verify_completed_interaction(interaction(steps=steps, output='{"schema_version":"1.0"}'))
+
+
+@pytest.mark.parametrize(
+    ("path", "value"),
+    [
+        (("observations", 0, "title"), "   "),
+        (("observations", 0, "confidence"), "certain"),
+        (("observations", 0, "evidence", 0, "start_seconds"), float("nan")),
+    ],
+)
+def test_empty_required_values_invalid_enums_and_nonfinite_numbers_are_output_invalid(
+    path: tuple[str | int, ...], value: object
+) -> None:
+    output = json.loads(VALID_OUTPUT)
+    target: object = output
+    for part in path[:-1]:
+        target = target[part]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+    steps = [
+        SimpleNamespace(type="processing_call", id="segment-1"),
+        SimpleNamespace(type="processing_result", call_id="segment-1"),
+    ]
+
+    with pytest.raises(ValidationError):
+        verify_completed_interaction(interaction(steps=steps, output=json.dumps(output)))

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from feedback_triage.analyze import AnalysisFailed, analyze_recording
+from feedback_triage.analyze import AnalysisFailed, triage_recording
 
 
 def parser() -> argparse.ArgumentParser:
@@ -19,7 +19,7 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        _, verified, ledger = analyze_recording(args.video, args.output, reanalyze=args.reanalyze)
+        _, verified, policy, ledger = triage_recording(args.video, args.output, reanalyze=args.reanalyze)
     except AnalysisFailed as error:
         print(json.dumps({"status": "failed", "code": error.code, "detail": str(error)}))
         return 1
@@ -30,6 +30,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "ledger": str(ledger.path),
                 "processing_pair_count": verified.processing_pair_count,
                 "analysis": verified.analysis.model_dump(mode="json"),
+                "policy_result": policy.model_dump(mode="json"),
             },
             indent=2,
         )

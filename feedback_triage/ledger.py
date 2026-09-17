@@ -65,6 +65,10 @@ class RunLedger:
     def attempts(self) -> tuple[dict[str, Any], ...]:
         return tuple(deepcopy(cast(list[dict[str, Any]], self._data["attempts"])))
 
+    @property
+    def source_sha256(self) -> str:
+        return cast(str, self._data["source_sha256"])
+
     def complete(self, attempt_id: str, analysis: dict[str, Any], *, processing_pair_count: int) -> None:
         attempt = self._attempt(attempt_id)
         attempt.update(
@@ -75,8 +79,16 @@ class RunLedger:
         )
         self._write()
 
+    def record_policy_result(self, attempt_id: str, policy_result: dict[str, Any]) -> None:
+        attempt = self._attempt(attempt_id)
+        if attempt["status"] != "verified":
+            raise ValueError("policy results require a verified analysis")
+        attempt["policy_result"] = policy_result
+        self._write()
+
     def fail(self, attempt_id: str, *, code: str, detail: str) -> None:
         attempt = self._attempt(attempt_id)
+        attempt.pop("policy_result", None)
         attempt.update(status="failed", completed_at=_now(), failure={"code": code, "detail": detail})
         self._write()
 

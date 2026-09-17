@@ -16,7 +16,8 @@ from feedback_triage.gemini_video import (
 )
 from feedback_triage.input_video import InvalidInput, VideoInfo, probe_video
 from feedback_triage.ledger import RunLedger
-from feedback_triage.models import AnalysisResult, VerifiedAnalysis
+from feedback_triage.models import AnalysisResult, PolicyResult, VerifiedAnalysis
+from feedback_triage.policy import PolicyFailure, route_analysis
 
 
 class AnalysisFailed(RuntimeError):
@@ -155,3 +156,25 @@ def analyze_recording(
         processing_pair_count=verified.processing_pair_count,
     )
     return video_info, verified, ledger
+
+
+def triage_recording(
+    video: Path,
+    output: Path,
+    client: GeminiClient | None = None,
+    *,
+    reanalyze: bool = False,
+) -> tuple[VideoInfo, VerifiedAnalysis, PolicyResult, RunLedger]:
+    video_info, verified, ledger = analyze_recording(video, output, client, reanalyze=reanalyze)
+    attempt_id = str(ledger.attempts[-1]["attempt_id"])
+    try:
+        policy = route_analysis(
+            verified.analysis,
+            duration_seconds=video_info.duration_seconds,
+            source_sha256=ledger.source_sha256,
+        )
+    except PolicyFailure as error:
+        ledger.fail(attempt_id, code=error.code, detail=str(error))
+        raise AnalysisFailed(error.code, str(error)) from error
+    ledger.record_policy_result(attempt_id, policy.model_dump(mode="json"))
+    return video_info, verified, policy, ledger
