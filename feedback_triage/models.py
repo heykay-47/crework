@@ -4,6 +4,9 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ReasonCode = Literal["question_not_request", "decision_not_request", "non_actionable_commentary", "low_confidence"]
+ObservationType = Literal["bug", "change_request", "feature_request", "question", "decision", "reaction", "commentary"]
+Intent = Literal["explicit_change", "explicit_problem", "ambiguous_reaction", "question", "decision", "none"]
+Route = Literal["candidate", "manual_review", "clarification_request", "withheld_result"]
 
 
 class StrictModel(BaseModel):
@@ -30,8 +33,8 @@ class EvidenceSpan(StrictModel):
 class Observation(StrictModel):
     observation_id: str = Field(pattern=r"^obs_[0-9]{3}$")
     topic_key: str
-    type: Literal["bug", "change_request", "feature_request", "question", "decision", "reaction", "commentary"]
-    intent: Literal["explicit_change", "explicit_problem", "ambiguous_reaction", "question", "decision", "none"]
+    type: ObservationType
+    intent: Intent
     title: str = Field(min_length=1)
     component: str | None
     summary: str = Field(min_length=1)
@@ -67,11 +70,11 @@ class VerifiedAnalysis(StrictModel):
 
 
 class RoutedResult(StrictModel):
-    route: Literal["candidate", "manual_review", "clarification_request", "withheld_result"]
+    route: Route
     candidate_id: str = Field(pattern=r"^cand_[0-9a-f]{16}$")
     topic_key: str
-    type: Literal["bug", "change_request", "feature_request", "question", "decision", "reaction", "commentary"]
-    intent: Literal["explicit_change", "explicit_problem", "ambiguous_reaction", "question", "decision", "none"]
+    type: ObservationType
+    intent: Intent
     title: str
     component: str | None
     summary: str

@@ -1,5 +1,4 @@
 import hashlib
-import json
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -14,8 +13,12 @@ from feedback_triage.gemini_video import (
     retrieve_verified_interaction,
     run_stored_stream,
 )
+from feedback_triage.fingerprint import (
+    build_analysis_fingerprint_inputs,
+    fingerprint_inputs_digest,
+)
 from feedback_triage.input_video import InvalidInput, VideoInfo, probe_video
-from feedback_triage.ledger import RunLedger
+from feedback_triage.ledger import LedgerFingerprintMismatch, RunLedger
 from feedback_triage.models import AnalysisResult, PolicyResult, VerifiedAnalysis
 from feedback_triage.policy import PolicyFailure, route_analysis
 
@@ -38,15 +41,69 @@ def unavailable_source_id(path: Path) -> str:
     return hashlib.sha256(f"unavailable\0{path.absolute()}".encode()).hexdigest()
 
 
-def analysis_fingerprint(source_sha256: str) -> str:
-    contract = {
-        "source_sha256": source_sha256,
-        "model": MODEL,
-        "prompt": PROMPT,
-        "schema": AnalysisResult.model_json_schema(),
-    }
-    encoded = json.dumps(contract, sort_keys=True, separators=(",", ":")).encode()
-    return hashlib.sha256(encoded).hexdigest()
+def analysis_fingerprint_inputs(
+    source_sha256: str,
+    *,
+    prompt: str = PROMPT,
+    project_context: str = "",
+    fixture_version: str | None = None,
+    ground_truth_sha256: str | None = None,
+) -> dict[str, str]:
+    return build_analysis_fingerprint_inputs(
+        source_sha256,
+        model=MODEL,
+        prompt=prompt,
+        schema=AnalysisResult.model_json_schema(),
+        project_context=project_context,
+        fixture_version=fixture_version,
+        ground_truth_sha256=ground_truth_sha256,
+    )
+
+
+def analysis_fingerprint(
+    source_sha256: str,
+    *,
+    prompt: str = PROMPT,
+    project_context: str = "",
+    fixture_version: str | None = None,
+    ground_truth_sha256: str | None = None,
+) -> str:
+    return fingerprint_inputs_digest(
+        analysis_fingerprint_inputs(
+            source_sha256,
+            prompt=prompt,
+            project_context=project_context,
+            fixture_version=fixture_version,
+            ground_truth_sha256=ground_truth_sha256,
+        )
+    )
+
+
+def _ledger_for(
+    output: Path,
+    *,
+    source_sha256: str,
+    prompt: str,
+    project_context: str,
+    fixture_version: str | None,
+    ground_truth_sha256: str | None,
+) -> RunLedger:
+    inputs = analysis_fingerprint_inputs(
+        source_sha256,
+        prompt=prompt,
+        project_context=project_context,
+        fixture_version=fixture_version,
+        ground_truth_sha256=ground_truth_sha256,
+    )
+    try:
+        return RunLedger.create(
+            output,
+            source_sha256=source_sha256,
+            fingerprint=fingerprint_inputs_digest(inputs),
+            fingerprint_inputs=inputs,
+        )
+    except LedgerFingerprintMismatch as error:
+        raise AnalysisFailed("fingerprint_mismatch", str(error)) from error
 
 
 def _saved_verified(attempt: dict[str, object]) -> VerifiedAnalysis:
@@ -65,23 +122,33 @@ def analyze_recording(
     client: GeminiClient | None = None,
     *,
     reanalyze: bool = False,
+    prompt: str = PROMPT,
+    project_context: str = "",
+    fixture_version: str | None = None,
+    ground_truth_sha256: str | None = None,
 ) -> tuple[VideoInfo, VerifiedAnalysis, RunLedger]:
     try:
         source_sha256 = file_sha256(video)
     except OSError as error:
         source_sha256 = unavailable_source_id(video)
-        ledger = RunLedger.create(
+        ledger = _ledger_for(
             output,
             source_sha256=source_sha256,
-            fingerprint=analysis_fingerprint(source_sha256),
+            prompt=prompt,
+            project_context=project_context,
+            fixture_version=fixture_version,
+            ground_truth_sha256=ground_truth_sha256,
         )
         attempt_id = ledger.start_attempt()
         ledger.fail(attempt_id, code="invalid_input", detail=str(error))
         raise AnalysisFailed("invalid_input", str(error)) from error
-    ledger = RunLedger.create(
+    ledger = _ledger_for(
         output,
         source_sha256=source_sha256,
-        fingerprint=analysis_fingerprint(source_sha256),
+        prompt=prompt,
+        project_context=project_context,
+        fixture_version=fixture_version,
+        ground_truth_sha256=ground_truth_sha256,
     )
     try:
         video_info = probe_video(video)
@@ -136,6 +203,8 @@ def analyze_recording(
             video,
             on_created=lambda interaction_id: ledger.record_interaction_created(attempt_id, interaction_id),
             on_diagnostic=lambda event_type: ledger.record_diagnostic(attempt_id, event_type),
+            prompt=prompt,
+            project_context=project_context,
         )
     except ValidationError as error:
         ledger.fail(attempt_id, code="output_invalid", detail=str(error))
@@ -164,8 +233,21 @@ def triage_recording(
     client: GeminiClient | None = None,
     *,
     reanalyze: bool = False,
+    prompt: str = PROMPT,
+    project_context: str = "",
+    fixture_version: str | None = None,
+    ground_truth_sha256: str | None = None,
 ) -> tuple[VideoInfo, VerifiedAnalysis, PolicyResult, RunLedger]:
-    video_info, verified, ledger = analyze_recording(video, output, client, reanalyze=reanalyze)
+    video_info, verified, ledger = analyze_recording(
+        video,
+        output,
+        client,
+        reanalyze=reanalyze,
+        prompt=prompt,
+        project_context=project_context,
+        fixture_version=fixture_version,
+        ground_truth_sha256=ground_truth_sha256,
+    )
     attempt_id = str(ledger.attempts[-1]["attempt_id"])
     try:
         policy = route_analysis(

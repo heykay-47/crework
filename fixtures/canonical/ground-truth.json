@@ -1,0 +1,98 @@
+{
+  "fixture_version": "canonical-six-case-v3",
+  "source_path": "feedback-recording.mp4",
+  "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc",
+  "duration_seconds": 360.026667,
+  "cases": [
+    {
+      "case_id": "A",
+      "label": "explicit hero CTA copy change",
+      "authored_window": {"start_seconds": 20.0, "end_seconds": 70.0},
+      "required": {
+        "topic_key": "hero-cta-label", "type": "change_request", "intent": "explicit_change",
+        "route": "candidate", "reason_code": null, "approval_eligible": true, "visually_inferred": false,
+        "candidate_id": "cand_2c8c489a2f60f030", "requested_outcome": {"presence": "required", "required_terms": ["schedule a call"]},
+        "acceptance_criteria": {"presence": "forbidden"}, "clarification_question": {"presence": "forbidden"}
+      },
+      "forbidden": {"routes": ["manual_review", "clarification_request", "withheld_result"]},
+      "evidence_frame_required": false,
+      "client_quote": {"presence": "required", "required_terms": ["button", "schedule"]}
+    },
+    {
+      "case_id": "B",
+      "label": "spoken-and-visible mobile navbar overlap",
+      "authored_window": {"start_seconds": 70.0, "end_seconds": 120.0},
+      "required": {
+        "topic_key": "mobile-navbar-logo-overlap", "type": "bug", "intent": "explicit_problem",
+        "route": "candidate", "reason_code": null, "approval_eligible": true, "visually_inferred": false,
+        "candidate_id": "cand_481753781d347a60", "requested_outcome": {"presence": "required", "required_terms": ["logo", "menu"], "forbidden_terms": ["delete", "remove"]},
+        "acceptance_criteria": {"presence": "forbidden"}, "clarification_question": {"presence": "forbidden"}
+      },
+      "forbidden": {"routes": ["manual_review", "clarification_request", "withheld_result"]},
+      "evidence_frame_required": true,
+      "client_quote": {"presence": "required", "required_terms": ["menu", "logo"]},
+      "visual_observation": {"presence": "required", "required_terms": ["logo"]}
+    },
+    {
+      "case_id": "C",
+      "label": "vague pricing reaction",
+      "authored_window": {"start_seconds": 145.0, "end_seconds": 195.0},
+      "required": {
+        "topic_key": "pricing-section-reaction", "type": "reaction", "intent": "ambiguous_reaction",
+        "route": "clarification_request", "reason_code": null, "approval_eligible": false, "visually_inferred": false,
+        "candidate_id": "cand_f246c26704fabaae", "requested_outcome": {"presence": "forbidden"},
+        "acceptance_criteria": {"presence": "forbidden"}, "clarification_question": {"presence": "required", "required_terms": ["pricing"]}
+      },
+      "forbidden": {"routes": ["candidate", "manual_review", "withheld_result"]},
+      "evidence_frame_required": false,
+      "client_quote": {"presence": "required", "required_terms": ["pricing"]}
+    },
+    {
+      "case_id": "D",
+      "label": "repeated mobile navbar overlap on dashboard",
+      "authored_window": {"start_seconds": 210.0, "end_seconds": 250.0},
+      "required": {
+        "topic_key": "mobile-navbar-logo-overlap", "type": "bug", "intent": "explicit_problem",
+        "route": "candidate", "reason_code": null, "approval_eligible": true, "visually_inferred": false,
+        "candidate_id": "cand_481753781d347a60", "requested_outcome": {"presence": "required", "required_terms": ["logo", "menu"], "forbidden_terms": ["delete", "remove"]},
+        "acceptance_criteria": {"presence": "forbidden"}, "clarification_question": {"presence": "forbidden"}
+      },
+      "forbidden": {"routes": ["manual_review", "clarification_request", "withheld_result"]},
+      "evidence_frame_required": false,
+      "client_quote": {"presence": "required", "required_terms": ["menu", "logo"]},
+      "visual_observation": {"presence": "required", "required_terms": ["logo"]}
+    },
+    {
+      "case_id": "E",
+      "label": "analytics tracking question",
+      "authored_window": {"start_seconds": 250.0, "end_seconds": 290.0},
+      "required": {
+        "topic_key": "hero-cta-analytics", "type": "question", "intent": "question",
+        "route": "withheld_result", "reason_code": "question_not_request", "approval_eligible": false, "visually_inferred": false,
+        "candidate_id": "cand_9752fd020e6a3390", "requested_outcome": {"presence": "forbidden"},
+        "acceptance_criteria": {"presence": "forbidden"}, "clarification_question": {"presence": "forbidden"}
+      },
+      "forbidden": {"routes": ["candidate", "manual_review", "clarification_request"]},
+      "evidence_frame_required": false,
+      "client_quote": {"presence": "required", "required_terms": ["analytics", "button"]}
+    },
+    {
+      "case_id": "F",
+      "label": "visual-only contact submit anomaly",
+      "authored_window": {"start_seconds": 300.0, "end_seconds": 350.0},
+      "required": {
+        "topic_key": "contact-form-submit-anomaly", "type": "bug", "intent": "none",
+        "route": "manual_review", "reason_code": null, "approval_eligible": false, "visually_inferred": true,
+        "candidate_id": "cand_191f3b4d6d46effb", "requested_outcome": {"presence": "forbidden"},
+        "acceptance_criteria": {"presence": "forbidden"}, "clarification_question": {"presence": "forbidden"}
+      },
+      "forbidden": {"routes": ["candidate", "clarification_request", "withheld_result"]},
+      "evidence_frame_required": true,
+      "client_quote": {"presence": "forbidden"},
+      "visual_observation": {"presence": "required", "required_terms": ["button"]}
+    }
+  ],
+  "duplicate_relationships": [
+    {"case_ids": ["B", "D"], "topic_key": "mobile-navbar-logo-overlap", "candidate_id": "cand_481753781d347a60"}
+  ]
+}

@@ -111,3 +111,27 @@ def test_completed_stored_stream_becomes_verified_analysis(tmp_path: Path) -> No
     assert isinstance(interactions, FakeInteractions)
     assert interactions.create_kwargs is not None
     assert interactions.create_kwargs["response_format"]["text"]["mime_type"] == "application/json"
+
+
+def test_project_context_is_sent_as_background_without_replacing_the_prompt(tmp_path: Path) -> None:
+    events = [
+        SimpleNamespace(event_type="interaction.created", interaction=SimpleNamespace(id="interaction-123")),
+        SimpleNamespace(event_type="interaction.completed"),
+    ]
+    client = FakeClient(events)
+
+    run_stored_stream(
+        client,
+        tmp_path / "feedback.mp4",
+        on_created=lambda _: None,
+        on_diagnostic=lambda _: None,
+        prompt="frozen prompt",
+        project_context="project context",
+    )
+
+    interactions = client.interactions
+    assert isinstance(interactions, FakeInteractions)
+    assert interactions.create_kwargs is not None
+    text_input = interactions.create_kwargs["input"][1]["text"]
+    assert text_input.startswith("frozen prompt")
+    assert "project context" in text_input

@@ -12,18 +12,41 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+class LedgerFingerprintMismatch(ValueError):
+    """The persisted ledger does not belong to the current behavior inputs."""
+
+
+class LedgerInvalid(ValueError):
+    """The persisted Run Ledger is corrupt or structurally invalid."""
+
+
 class RunLedger:
     def __init__(self, path: Path, data: dict[str, Any]) -> None:
         self.path = path
         self._data = data
 
     @classmethod
-    def create(cls, output: Path, *, source_sha256: str, fingerprint: str) -> "RunLedger":
+    def create(
+        cls,
+        output: Path,
+        *,
+        source_sha256: str,
+        fingerprint: str,
+        fingerprint_inputs: dict[str, str],
+    ) -> "RunLedger":
         path = output / source_sha256 / "ledger.json"
         if path.exists():
-            data = json.loads(path.read_text())
-            if data.get("analysis_fingerprint") != fingerprint:
-                raise ValueError("existing Run Ledger has a different analysis fingerprint")
+            try:
+                data = json.loads(path.read_text())
+            except (OSError, json.JSONDecodeError) as error:
+                raise LedgerInvalid("existing Run Ledger is not valid JSON") from error
+            if not isinstance(data, dict):
+                raise LedgerInvalid("existing Run Ledger must be a JSON object")
+            cls._validate_existing(data, source_sha256)
+            if data["analysis_fingerprint"] != fingerprint:
+                raise LedgerFingerprintMismatch("existing Run Ledger has a different analysis fingerprint")
+            if data["fingerprint_inputs"] != fingerprint_inputs:
+                raise LedgerFingerprintMismatch("existing Run Ledger has different analysis fingerprint inputs")
             return cls(path, data)
         ledger = cls(
             path,
@@ -31,11 +54,53 @@ class RunLedger:
                 "version": 1,
                 "source_sha256": source_sha256,
                 "analysis_fingerprint": fingerprint,
+                "fingerprint_inputs": fingerprint_inputs,
                 "attempts": [],
             },
         )
         ledger._write()
         return ledger
+
+    @staticmethod
+    def _validate_existing(data: dict[str, Any], source_sha256: str) -> None:
+        if data.get("version") != 1:
+            raise LedgerInvalid("existing Run Ledger has an unsupported version")
+        if data.get("source_sha256") != source_sha256:
+            raise LedgerInvalid("existing Run Ledger has a mismatched source identity")
+        if not isinstance(data.get("analysis_fingerprint"), str):
+            raise LedgerInvalid("existing Run Ledger has an invalid analysis fingerprint")
+        fingerprint_inputs = data.get("fingerprint_inputs")
+        if not isinstance(fingerprint_inputs, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in fingerprint_inputs.items()
+        ):
+            raise LedgerInvalid("existing Run Ledger has invalid analysis fingerprint inputs")
+        attempts = data.get("attempts")
+        if not isinstance(attempts, list):
+            raise LedgerInvalid("existing Run Ledger attempts must be a list")
+        for attempt in attempts:
+            if not isinstance(attempt, dict):
+                raise LedgerInvalid("existing Run Ledger contains an invalid attempt")
+            if not isinstance(attempt.get("attempt_id"), str) or not isinstance(attempt.get("status"), str):
+                raise LedgerInvalid("existing Run Ledger contains an invalid attempt identity")
+            if attempt["status"] not in {"starting", "streaming", "verified", "failed"}:
+                raise LedgerInvalid("existing Run Ledger contains an invalid attempt status")
+            if attempt.get("interaction_id") is not None and not isinstance(attempt["interaction_id"], str):
+                raise LedgerInvalid("existing Run Ledger contains an invalid interaction ID")
+            if not isinstance(attempt.get("diagnostics"), list) or not all(
+                isinstance(item, str) for item in attempt["diagnostics"]
+            ):
+                raise LedgerInvalid("existing Run Ledger contains invalid diagnostics")
+            if attempt["status"] == "verified":
+                if not isinstance(attempt.get("analysis"), dict) or not isinstance(
+                    attempt.get("processing_pair_count"), int
+                ):
+                    raise LedgerInvalid("existing verified attempt is incomplete")
+            if attempt["status"] == "failed":
+                failure = attempt.get("failure")
+                if not isinstance(failure, dict) or not isinstance(failure.get("code"), str) or not isinstance(
+                    failure.get("detail"), str
+                ):
+                    raise LedgerInvalid("existing failed attempt is incomplete")
 
     def start_attempt(self) -> str:
         attempt_id = str(uuid4())

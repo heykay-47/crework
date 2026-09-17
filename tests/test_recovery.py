@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from feedback_triage.analyze import AnalysisFailed, analysis_fingerprint, analyze_recording, file_sha256
+from feedback_triage.analyze import AnalysisFailed, analysis_fingerprint, analysis_fingerprint_inputs, analyze_recording, file_sha256
 from feedback_triage.gemini_video import FilesAPI, InteractionAPI, retrieve_verified_interaction
 from feedback_triage.input_video import VideoInfo
 from feedback_triage.ledger import RunLedger
@@ -64,7 +64,12 @@ def prepare_video(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 def interrupted_ledger(video: Path, output: Path, interaction_id: str = "interaction-123") -> RunLedger:
     source = file_sha256(video)
-    ledger = RunLedger.create(output, source_sha256=source, fingerprint=analysis_fingerprint(source))
+    ledger = RunLedger.create(
+        output,
+        source_sha256=source,
+        fingerprint=analysis_fingerprint(source),
+        fingerprint_inputs=analysis_fingerprint_inputs(source),
+    )
     attempt_id = ledger.start_attempt()
     ledger.record_interaction_created(attempt_id, interaction_id)
     return ledger
@@ -106,7 +111,12 @@ def test_normal_rerun_reuses_verified_analysis_without_a_client(
 def test_unreconciled_attempt_blocks_normal_rerun(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     video = prepare_video(monkeypatch, tmp_path)
     source = file_sha256(video)
-    ledger = RunLedger.create(tmp_path / "output", source_sha256=source, fingerprint=analysis_fingerprint(source))
+    ledger = RunLedger.create(
+        tmp_path / "output",
+        source_sha256=source,
+        fingerprint=analysis_fingerprint(source),
+        fingerprint_inputs=analysis_fingerprint_inputs(source),
+    )
     ledger.start_attempt()
 
     with pytest.raises(AnalysisFailed) as failure:

@@ -15,7 +15,7 @@ class PolicyFailure(ValueError):
     code = "policy_failed"
 
 
-def _candidate_id(source_sha256: str, topic_key: str) -> str:
+def candidate_id_for(source_sha256: str, topic_key: str) -> str:
     value = f"v1\0{source_sha256}\0{topic_key}".encode()
     return f"cand_{hashlib.sha256(value).hexdigest()[:16]}"
 
@@ -121,7 +121,7 @@ def _route_group(
     )
     return RoutedResult(
         route=route,
-        candidate_id=_candidate_id(source_sha256, canonical.topic_key),
+        candidate_id=candidate_id_for(source_sha256, canonical.topic_key),
         topic_key=canonical.topic_key,
         type=canonical.type,
         intent=canonical.intent,

@@ -30,7 +30,17 @@ PROMPT = """Inspect the Feedback Recording's speech and visuals. Return only one
     "rationale": "non-empty rationale"
   }]
 }
-Use null for unknown nullable fields. Each evidence item must have client_quote or visual_observation. Return timestamp-grounded Observations only. Preserve ambiguity, do not invent requested outcomes or acceptance criteria, and use one topic_key for repeated mentions."""
+Use null for unknown nullable fields. Each evidence item must have client_quote or visual_observation. Return timestamp-grounded Observations only. Preserve ambiguity, do not invent requested outcomes or acceptance criteria, and use one topic_key for repeated mentions. Cover every distinct feedback mention that is supported by speech or visible UI. Treat a clearly visible authored anomaly without an explicit client problem statement as a possible bug with intent none, medium confidence, and visually grounded evidence; reserve low confidence for cases where the evidence itself is unclear.
+
+Apply these field rules:
+- explicit_change: requested_outcome states the client's requested change. acceptance_criteria contains only a separate test condition the client explicitly states; merely restating the change is not a criterion.
+- explicit_problem: type is bug and requested_outcome states only the direct resolution inherent in the stated problem (for example, an overlap must no longer occur). acceptance_criteria contains only a separate test condition the client explicitly states; merely negating the problem is not a criterion.
+- ambiguous_reaction: requested_outcome is null, acceptance_criteria is empty, and clarification_question asks what specific change the client wants.
+- question, decision, and none intents: requested_outcome MUST be null, acceptance_criteria MUST be empty, and clarification_question MUST be null. A visual-only anomaly does not authorize you to infer a desired fix or test criterion.
+
+For repeated observations with the same topic_key, type, component, intent, and requested_outcome MUST be exactly identical. Only the mention-specific title, summary, evidence, rationale, and directly stated acceptance criteria may differ.
+
+Before returning JSON, perform a consistency pass over repeated topic_key values: copy the first observation's type, component, intent, and requested_outcome into every later observation with that topic_key verbatim. Do not add page names or other qualifiers to those copied fields."""
 
 
 class UntrustedInteraction(RuntimeError):
@@ -68,6 +78,17 @@ class FilesAPI(Protocol):
 class GeminiClient(Protocol):
     interactions: InteractionAPI
     files: FilesAPI
+
+
+def compose_prompt(prompt: str, project_context: str) -> str:
+    context = project_context.strip()
+    if not context:
+        return prompt
+    return (
+        f"{prompt.rstrip()}\n\n"
+        "Project context is background only. Do not invent feedback, outcomes, acceptance criteria, or evidence from it:\n"
+        f"{context}"
+    )
 
 
 def _value(item: Any, name: str) -> Any:
@@ -169,6 +190,8 @@ def run_stored_stream(
     on_created: Callable[[str], None],
     on_diagnostic: Callable[[str], None],
     upload_deadline_seconds: float = 300,
+    prompt: str = PROMPT,
+    project_context: str = "",
 ) -> VerifiedAnalysis:
     try:
         uploaded = client.files.upload(file=str(video))
@@ -195,7 +218,7 @@ def run_stored_stream(
                     "mime_type": _value(uploaded, "mime_type"),
                     "processing": "agentic",
                 },
-                {"type": "text", "text": PROMPT},
+                {"type": "text", "text": compose_prompt(prompt, project_context)},
             ],
             stream=True,
             store=True,
