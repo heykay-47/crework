@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from pydantic import ValidationError
+
+from feedback_triage.models import EvidenceFrameRecord
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
@@ -101,6 +105,15 @@ class RunLedger:
                     failure.get("detail"), str
                 ):
                     raise LedgerInvalid("existing failed attempt is incomplete")
+            if "evidence_frames" in attempt:
+                frames = attempt["evidence_frames"]
+                if not isinstance(frames, list):
+                    raise LedgerInvalid("existing attempt has invalid Evidence Frames")
+                try:
+                    for frame in frames:
+                        EvidenceFrameRecord.model_validate(frame)
+                except (TypeError, ValidationError) as error:
+                    raise LedgerInvalid("existing attempt has invalid Evidence Frames") from error
 
     def start_attempt(self) -> str:
         attempt_id = str(uuid4())
@@ -111,6 +124,7 @@ class RunLedger:
                 "status": "starting",
                 "interaction_id": None,
                 "diagnostics": [],
+                "evidence_frames": [],
             }
         )
         self._write()
@@ -150,6 +164,31 @@ class RunLedger:
             raise ValueError("policy results require a verified analysis")
         attempt["policy_result"] = policy_result
         self._write()
+
+    def record_evidence_frame(self, attempt_id: str, record: EvidenceFrameRecord) -> None:
+        attempt = self._attempt(attempt_id)
+        if attempt["status"] != "verified":
+            raise ValueError("Evidence Frames require a verified analysis")
+        frames = attempt.setdefault("evidence_frames", [])
+        if not isinstance(frames, list):
+            raise LedgerInvalid("attempt has invalid Evidence Frames")
+        serialized = record.model_dump(mode="json")
+        for index, existing in enumerate(frames):
+            if isinstance(existing, dict) and existing.get("candidate_id") == record.candidate_id:
+                frames[index] = serialized
+                break
+        else:
+            frames.append(serialized)
+        self._write()
+
+    def evidence_frames_for_attempt(self, attempt_id: str) -> tuple[EvidenceFrameRecord, ...]:
+        frames = self._attempt(attempt_id).get("evidence_frames", [])
+        if not isinstance(frames, list):
+            raise LedgerInvalid("attempt has invalid Evidence Frames")
+        try:
+            return tuple(EvidenceFrameRecord.model_validate(frame) for frame in frames)
+        except (TypeError, ValidationError) as error:
+            raise LedgerInvalid("attempt has invalid Evidence Frames") from error
 
     def fail(self, attempt_id: str, *, code: str, detail: str) -> None:
         attempt = self._attempt(attempt_id)

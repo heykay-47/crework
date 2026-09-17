@@ -7,6 +7,7 @@ ReasonCode = Literal["question_not_request", "decision_not_request", "non_action
 ObservationType = Literal["bug", "change_request", "feature_request", "question", "decision", "reaction", "commentary"]
 Intent = Literal["explicit_change", "explicit_problem", "ambiguous_reaction", "question", "decision", "none"]
 Route = Literal["candidate", "manual_review", "clarification_request", "withheld_result"]
+EvidenceFrameStatus = Literal["extracted", "failed"]
 
 
 class StrictModel(BaseModel):
@@ -101,3 +102,28 @@ class RoutedResult(StrictModel):
 class PolicyResult(StrictModel):
     schema_version: Literal["1.0"]
     results: list[RoutedResult]
+
+
+class EvidenceFrameRecord(StrictModel):
+    """The persisted result of extracting one Candidate's Evidence Frame."""
+
+    candidate_id: str = Field(pattern=r"^cand_[0-9a-f]{16}$")
+    timestamp_seconds: float
+    status: EvidenceFrameStatus
+    path: str | None = None
+    error: str | None = None
+
+    @model_validator(mode="after")
+    def validate_frame_record(self) -> Self:
+        if not math.isfinite(self.timestamp_seconds) or self.timestamp_seconds < 0:
+            raise ValueError("Evidence Frame timestamp must be finite and non-negative")
+        if self.status == "extracted":
+            if self.path is None or not self.path.strip():
+                raise ValueError("extracted Evidence Frames require a path")
+            if self.error is not None:
+                raise ValueError("extracted Evidence Frames cannot contain an error")
+        elif self.path is not None:
+            raise ValueError("failed Evidence Frames cannot contain a path")
+        elif self.error is None or not self.error.strip():
+            raise ValueError("failed Evidence Frames require an error")
+        return self

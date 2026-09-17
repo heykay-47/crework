@@ -1,4 +1,5 @@
 import hashlib
+import subprocess
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -17,9 +18,10 @@ from feedback_triage.fingerprint import (
     build_analysis_fingerprint_inputs,
     fingerprint_inputs_digest,
 )
+from feedback_triage.evidence import extract_evidence_frame
 from feedback_triage.input_video import InvalidInput, VideoInfo, probe_video
 from feedback_triage.ledger import LedgerFingerprintMismatch, RunLedger
-from feedback_triage.models import AnalysisResult, PolicyResult, VerifiedAnalysis
+from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, PolicyResult, VerifiedAnalysis
 from feedback_triage.policy import PolicyFailure, route_analysis
 
 
@@ -227,6 +229,29 @@ def analyze_recording(
     return video_info, verified, ledger
 
 
+def _record_evidence_frames(video: Path, ledger: RunLedger, attempt_id: str, policy: PolicyResult) -> None:
+    frame_directory = ledger.path.parent / "evidence-frames" / attempt_id
+    for result in policy.results:
+        if result.route not in {"candidate", "manual_review"}:
+            continue
+        output_path = frame_directory / f"{result.candidate_id}.png"
+        try:
+            frame = extract_evidence_frame(
+                video,
+                candidate_id=result.candidate_id,
+                timestamp_seconds=result.evidence_frame_seconds,
+                output_path=output_path,
+            )
+        except (OSError, subprocess.SubprocessError, ValueError) as error:
+            frame = EvidenceFrameRecord(
+                candidate_id=result.candidate_id,
+                timestamp_seconds=result.evidence_frame_seconds,
+                status="failed",
+                error=f"Evidence Frame extraction failed: {error}",
+            )
+        ledger.record_evidence_frame(attempt_id, frame)
+
+
 def triage_recording(
     video: Path,
     output: Path,
@@ -259,4 +284,5 @@ def triage_recording(
         ledger.fail(attempt_id, code=error.code, detail=str(error))
         raise AnalysisFailed(error.code, str(error)) from error
     ledger.record_policy_result(attempt_id, policy.model_dump(mode="json"))
+    _record_evidence_frames(video, ledger, attempt_id, policy)
     return video_info, verified, policy, ledger

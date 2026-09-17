@@ -34,7 +34,7 @@ The command FFprobes the input before creating a Gemini client. It then uploads 
 2. every `processing_call.id` to match exactly one observed `processing_result.call_id`, with no orphans;
 3. `output_text` to pass the v1 Pydantic schema.
 
-The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations.
+The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations. After policy persistence, actionable `candidate` and `manual_review` routes also receive a local Evidence Frame under `output/<source-sha256>/evidence-frames/<attempt-id>/<candidate-id>.png`.
 
 ## Canonical semantic evaluation
 
@@ -64,7 +64,7 @@ docker run --rm --user "$(id -u):$(id -g)" \
   --reanalyze
 ```
 
-The scorer validates source identity and duration; exact semantic route, type, intent, reason, and Candidate identity; required and forbidden authored outcomes and text anchors; required client/visual evidence anchors; Evidence Span midpoint coverage within the result's own authored topic windows; required Evidence Frames; the shared navbar identity across both mention windows; hallucinated evidence; missing cases; and unexpected actionable results. Any permitted extra Withheld Result must be declared in the manifest with its reason and authored window. The command exits nonzero if the semantic score fails.
+The scorer validates source identity and duration; exact semantic route, type, intent, reason, and Candidate identity; required and forbidden authored outcomes and text anchors; required client/visual evidence anchors; Evidence Span midpoint coverage within the result's own authored topic windows; required Evidence Frames; the shared navbar identity across both mention windows; hallucinated evidence; missing cases; and unexpected actionable results. Any permitted extra Withheld Result must be declared in the manifest with its reason and authored window. The command exits nonzero if the semantic score fails. Inspect the printed `evidence_frames` array and the attempt-specific directory to verify extracted PNGs for the required visual cases.
 
 The Run Ledger stores the fingerprint and component digests for every behavior-affecting source, model, prompt, schema, context, policy, dependency/container, fixture version, ground-truth, and implementation input. A changed fingerprint cannot reuse the old ledger.
 
@@ -78,7 +78,7 @@ Policy routes each merged result in this order:
 4. visually inferred possible bugs and other medium-confidence actionable groups require **Manual Review**;
 5. high-confidence explicit changes and problems become Approval-eligible **Candidates**.
 
-Approval eligibility is only a route property; it is not Approval. Clarification Requests, Manual Review results, and Withheld Results cannot reach Approval in this run. Every route, reason code, normalized evidence span, and selected Evidence Frame timestamp is printed by the command and stored under `policy_result` in the Run Ledger. A policy contradiction records `policy_failed` and emits no routes; malformed model output records `output_invalid` before policy.
+Approval eligibility is only a route property; it is not Approval. Clarification Requests, Manual Review results, and Withheld Results cannot reach Approval in this run. Every route, reason code, normalized evidence span, and selected Evidence Frame timestamp is printed by the command and stored under `policy_result` in the Run Ledger. Frame selection uses the earliest visual keyframe, then the earliest visual-span midpoint, then the earliest supplied keyframe, and finally the earliest normalized-span midpoint. FFmpeg is invoked without a shell; a nonzero exit, missing executable, timeout, or missing/empty output records an `EvidenceFrameRecord` with `status: "failed"` and an error. That failure is visible in the top-level `evidence_frames` output but leaves the Candidate route, verified attempt, and policy result intact. A policy contradiction records `policy_failed` and emits no routes; malformed model output records `output_invalid` before policy.
 
 Normal reruns never create a replacement interaction. They reuse an already verified result or retrieve the exact persisted interaction ID until it is reconciled. An attempt without a persisted interaction ID blocks further work. Use `--reanalyze` only when an intentionally fresh attempt is required; it appends to the Run Ledger and preserves every earlier attempt.
 

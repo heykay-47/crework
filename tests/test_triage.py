@@ -12,7 +12,7 @@ from feedback_triage.analyze import (
 )
 from feedback_triage.input_video import VideoInfo
 from feedback_triage.ledger import RunLedger
-from feedback_triage.models import AnalysisResult, VerifiedAnalysis
+from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, EvidenceSpan, Observation, VerifiedAnalysis
 from feedback_triage.policy import route_analysis
 from main import main
 from tests.test_completion_trust import VALID_OUTPUT
@@ -49,6 +49,108 @@ def test_verified_analysis_is_routed_and_every_result_is_recorded(
     assert saved["attempts"][0]["policy_result"] == policy.model_dump(mode="json")
 
 
+def test_actionable_routes_extract_and_record_frames_independently(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    analysis = AnalysisResult(
+        schema_version="1.0",
+        video_summary="Two actionable observations.",
+        observations=[
+            Observation(
+                observation_id="obs_001",
+                topic_key="navbar-overlap",
+                type="bug",
+                intent="explicit_problem",
+                title="Fix navbar overlap",
+                component="navbar",
+                summary="The logo overlaps the menu.",
+                requested_outcome="Keep the logo and menu separate.",
+                acceptance_criteria=[],
+                clarification_question=None,
+                confidence="high",
+                evidence=[
+                    EvidenceSpan(
+                        start_seconds=1.0,
+                        end_seconds=2.0,
+                        keyframe_seconds=1.5,
+                        client_quote="The menu overlaps the logo.",
+                        visual_observation="The logo overlaps the menu.",
+                    )
+                ],
+                rationale="The visual state and client report identify a bug.",
+            ),
+            Observation(
+                observation_id="obs_002",
+                topic_key="submit-anomaly",
+                type="bug",
+                intent="none",
+                title="Review submit anomaly",
+                component="contact-form",
+                summary="The submit button appears anomalous.",
+                requested_outcome=None,
+                acceptance_criteria=[],
+                clarification_question=None,
+                confidence="high",
+                evidence=[
+                    EvidenceSpan(
+                        start_seconds=5.0,
+                        end_seconds=7.0,
+                        client_quote=None,
+                        visual_observation="The submit button appears anomalous.",
+                    )
+                ],
+                rationale="The possible bug is inferred from the visual state.",
+            ),
+        ],
+    )
+    video, ledger = prepared_ledger(monkeypatch, tmp_path, analysis.model_dump(mode="json"))
+    calls: list[dict[str, object]] = []
+
+    def fake_extract(
+        video_path: Path,
+        *,
+        candidate_id: str,
+        timestamp_seconds: float,
+        output_path: Path,
+    ) -> EvidenceFrameRecord:
+        calls.append(
+            {
+                "video": video_path,
+                "candidate_id": candidate_id,
+                "timestamp_seconds": timestamp_seconds,
+                "output_path": output_path,
+            }
+        )
+        if len(calls) == 1:
+            return EvidenceFrameRecord(
+                candidate_id=candidate_id,
+                timestamp_seconds=timestamp_seconds,
+                status="extracted",
+                path=str(output_path),
+            )
+        return EvidenceFrameRecord(
+            candidate_id=candidate_id,
+            timestamp_seconds=timestamp_seconds,
+            status="failed",
+            error="ffmpeg exited with status 1",
+        )
+
+    monkeypatch.setattr("feedback_triage.analyze.extract_evidence_frame", fake_extract)
+
+    _, _, policy, returned_ledger = triage_recording(video, tmp_path / "output")
+
+    assert [call["candidate_id"] for call in calls] == [result.candidate_id for result in policy.results]
+    attempt_id = str(returned_ledger.attempts[-1]["attempt_id"])
+    assert all(
+        call["output_path"] == returned_ledger.path.parent / "evidence-frames" / attempt_id / f"{call['candidate_id']}.png"
+        for call in calls
+    )
+    records = returned_ledger.evidence_frames_for_attempt(attempt_id)
+    assert [record.status for record in records] == ["extracted", "failed"]
+    assert returned_ledger.attempts[-1]["status"] == "verified"
+    assert "policy_result" in returned_ledger.attempts[-1]
+
+
 def test_policy_failure_is_recorded_without_routes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     invalid = json.loads(VALID_OUTPUT)
     invalid["observations"][0]["topic_key"] = "Not Kebab Case"
@@ -79,6 +181,7 @@ def test_terminal_output_shows_every_route_and_reason(
     assert output["policy_result"]["results"][0]["route"] == "withheld_result"
     assert output["policy_result"]["results"][0]["reason_code"] == "low_confidence"
     assert output["policy_result"]["results"][0]["approval_eligible"] is False
+    assert output["evidence_frames"] == []
 
 
 def test_analysis_fingerprint_changes_when_behavior_inputs_change() -> None:

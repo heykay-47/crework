@@ -1,6 +1,7 @@
 import hashlib
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from typing import Literal
 
 from feedback_triage.models import AnalysisResult, EvidenceSpan, Observation, PolicyResult, ReasonCode, RoutedResult
@@ -73,17 +74,37 @@ def _validate_observation(observation: Observation, duration_seconds: float) -> 
     return [_normalize_evidence(span, duration_seconds) for span in observation.evidence]
 
 
-def _evidence_frame(evidence: list[EvidenceSpan]) -> float:
-    priority_classes = (
-        [span for span in evidence if _has_text(span.visual_observation) and span.keyframe_seconds is not None],
-        [span for span in evidence if _has_text(span.visual_observation) and span.keyframe_seconds is None],
-        [span for span in evidence if not _has_text(span.visual_observation) and span.keyframe_seconds is not None],
-        evidence,
-    )
-    selected = next(spans[0] for spans in priority_classes if spans)
-    if selected.keyframe_seconds is not None:
-        return selected.keyframe_seconds
-    return (selected.start_seconds + selected.end_seconds) / 2
+def select_evidence_frame_timestamp(evidence: Sequence[EvidenceSpan]) -> float:
+    """Choose the deterministic timestamp a reviewer should see first.
+
+    The input is expected to contain already-normalized Evidence Spans. Visual
+    observations and supplied keyframes carry more signal than an interval
+    midpoint, but the earliest timestamp within each priority class wins.
+    """
+    if not evidence:
+        raise ValueError("at least one Evidence Span is required")
+
+    visual_keyframes = [
+        span.keyframe_seconds
+        for span in evidence
+        if _has_text(span.visual_observation) and span.keyframe_seconds is not None
+    ]
+    if visual_keyframes:
+        return min(visual_keyframes)
+
+    visual_midpoints = [
+        (span.start_seconds + span.end_seconds) / 2
+        for span in evidence
+        if _has_text(span.visual_observation)
+    ]
+    if visual_midpoints:
+        return min(visual_midpoints)
+
+    keyframes = [span.keyframe_seconds for span in evidence if span.keyframe_seconds is not None]
+    if keyframes:
+        return min(keyframes)
+
+    return min((span.start_seconds + span.end_seconds) / 2 for span in evidence)
 
 
 def _route_group(
@@ -133,7 +154,7 @@ def _route_group(
         clarification_question=clarification_question,
         confidence=confidence,
         evidence=evidence,
-        evidence_frame_seconds=_evidence_frame(evidence),
+        evidence_frame_seconds=select_evidence_frame_timestamp(evidence),
         rationale=canonical.rationale,
         approval_eligible=route == "candidate",
         visually_inferred=visually_inferred,

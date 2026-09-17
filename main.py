@@ -64,6 +64,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     status = "ready_for_review"
     if score is not None and not score.passed:
         status = "semantic_score_failed"
+    attempts = ledger.attempts
+    evidence_frames = (
+        ledger.evidence_frames_for_attempt(str(attempts[-1]["attempt_id"])) if attempts else ()
+    )
     print(
         json.dumps(
             {
@@ -72,6 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "processing_pair_count": verified.processing_pair_count,
                 "analysis": verified.analysis.model_dump(mode="json"),
                 "policy_result": policy.model_dump(mode="json"),
+                "evidence_frames": [frame.model_dump(mode="json") for frame in evidence_frames],
                 "score": score.model_dump(mode="json") if score is not None else None,
             },
             indent=2,
