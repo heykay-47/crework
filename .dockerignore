@@ -1,0 +1,9 @@
+.git
+.agent
+.env
+.venv
+.mypy_cache
+.pytest_cache
+output
+inbox
+__pycache__
