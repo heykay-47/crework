@@ -12,13 +12,14 @@ def parser() -> argparse.ArgumentParser:
     analyze = subcommands.add_parser("analyze", help="analyze one owned synthetic Feedback Recording")
     analyze.add_argument("video", type=Path)
     analyze.add_argument("--output", type=Path, default=Path("output"))
+    analyze.add_argument("--reanalyze", action="store_true", help="append a replacement attempt after reconciliation")
     return command_parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        _, verified, ledger = analyze_recording(args.video, args.output)
+        _, verified, ledger = analyze_recording(args.video, args.output, reanalyze=args.reanalyze)
     except AnalysisFailed as error:
         print(json.dumps({"status": "failed", "code": error.code, "detail": str(error)}))
         return 1

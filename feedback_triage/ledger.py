@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+from copy import deepcopy
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -60,9 +61,18 @@ class RunLedger:
         self._attempt(attempt_id)["diagnostics"].append(event_type)
         self._write()
 
-    def complete(self, attempt_id: str, analysis: dict[str, Any]) -> None:
+    @property
+    def attempts(self) -> tuple[dict[str, Any], ...]:
+        return tuple(deepcopy(cast(list[dict[str, Any]], self._data["attempts"])))
+
+    def complete(self, attempt_id: str, analysis: dict[str, Any], *, processing_pair_count: int) -> None:
         attempt = self._attempt(attempt_id)
-        attempt.update(status="verified", completed_at=_now(), analysis=analysis)
+        attempt.update(
+            status="verified",
+            completed_at=_now(),
+            analysis=analysis,
+            processing_pair_count=processing_pair_count,
+        )
         self._write()
 
     def fail(self, attempt_id: str, *, code: str, detail: str) -> None:

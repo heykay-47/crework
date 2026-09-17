@@ -36,6 +36,8 @@ The command FFprobes the input before creating a Gemini client. It then uploads 
 
 The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations.
 
+Normal reruns never create a replacement interaction. They reuse an already verified result or retrieve the exact persisted interaction ID until it is reconciled. An attempt without a persisted interaction ID blocks further work. Use `--reanalyze` only when an intentionally fresh attempt is required; it appends to the Run Ledger and preserves every earlier attempt.
+
 ## Development checks
 
 The container is the supported runtime. If Docker is unavailable but Python 3.14 and FFmpeg already exist, the same checks can be run without installing system packages:

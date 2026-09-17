@@ -6,6 +6,7 @@
 
 ## [DECISIONS]
 
+- 2026-09-17T13:53:32Z [CODE] Issue #11 normal reruns reconcile the latest persisted attempt or reuse its verified result; only explicit `--reanalyze` may append after all prior attempts settle, and every attempt remains in ledger history.
 - 2026-09-17T08:53:02Z [USER] [MILESTONE] Closed Wayfinder map #1 is the authoritative risk-first addendum and supersedes conflicting `HANDOFF.md` details.
 - 2026-09-17T09:24:43Z [USER] Approved the ten-ticket implementation graph exactly as published in issues #10–#19.
 - 2026-09-17T05:09:38Z [USER] Use `gemini-3.5-flash-lite` with `stream=True, store=True`; persist `interaction.created` before diagnostics and trust only a retrieved `completed` interaction with fully matched processing pairs and schema-valid output.
@@ -15,12 +16,15 @@
 
 ## [PROGRESS]
 
+- 2026-09-17T13:53:32Z [CODE] Implemented issue #11 recovery: exact-ID retrieval, bounded idempotent retries with `Retry-After`, stable failure handling, independent replacement attempts, and CLI/docs/tests for `--reanalyze`.
+- 2026-09-17T13:53:32Z [TOOL] Two-axis `/code-review` found stale-result admission, post-ID interruption, terminal replacement, and deadline bugs; all correctness findings were addressed and re-reviewed.
 - 2026-09-17T09:30:57Z [TOOL] [MILESTONE] Published issues #10–#19 with verified blocking edges; #10 was the sole initial frontier.
 - 2026-09-17T13:08:52Z [CODE] Implemented issue #10: CLI orchestration, FFprobe boundary, stored Gemini stream/retrieval, processing verification, strict Pydantic schema, atomic ledger, container, synthetic fixture script, and tests.
 - 2026-09-17T13:08:52Z [TOOL] Ran two-axis `/code-review`; addressed missing-input persistence, evidence-span ordering, ledger interruption/fingerprint coverage, context-mount docs, and container guidance.
 
 ## [DISCOVERIES]
 
+- 2026-09-17T13:53:32Z [CODE] Stream exceptions after `interaction.created` must leave the attempt recoverable; only failures before an ID exists can be settled as creation-unrecoverable without exact-ID retrieval.
 - 2026-09-17T04:36:36Z [TOOL] Gemini 3.5 Flash-Lite rejects background interactions but supports the stored-stream fallback with completed retrieval and processing proof.
 - 2026-09-17T13:08:52Z [TOOL] `google-genai==2.24.0` requires nested `response_format.text`; agentic output still needed an explicit exact JSON shape in the prompt to reliably satisfy the schema.
 - 2026-09-17T13:08:52Z [TOOL] A live owned synthetic Feedback Recording completed with two matched processing pairs and schema-valid output; earlier transient stream errors were recorded fail-closed.
@@ -28,5 +32,6 @@
 
 ## [OUTCOMES]
 
+- 2026-09-17T13:53:32Z [TOOL] Issue #11 implementation passed Docker build, 28 tests, and strict mypy; commit and issue closure remain.
 - 2026-09-17T08:53:02Z [TOOL] [MILESTONE] Wayfinding completed at issue #1; schema, policy, approval safety, evidence, and proof contracts are linked from the closed map.
 - 2026-09-17T13:08:52Z [TOOL] Issue #10 is implemented in commit `f7a256d`, reviewed, verified, and closed; the next frontier should be recomputed from issues #11–#19.

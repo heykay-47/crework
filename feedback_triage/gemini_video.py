@@ -2,6 +2,8 @@ from collections import Counter
 from collections.abc import Callable, Iterable
 from pathlib import Path
 import time
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Protocol, cast
 
 from feedback_triage.models import AnalysisResult, VerifiedAnalysis
@@ -72,6 +74,52 @@ def _value(item: Any, name: str) -> Any:
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
 
 
+def _retry_after(error: Exception) -> float | None:
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", None) or getattr(error, "headers", None)
+    if headers is None:
+        return None
+    value = headers.get("Retry-After")
+    try:
+        return max(0.0, float(value))
+    except (TypeError, ValueError):
+        if not isinstance(value, str):
+            return None
+        try:
+            retry_at = parsedate_to_datetime(value)
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+
+def _is_retryable(error: Exception) -> bool:
+    status = getattr(error, "status_code", None)
+    if status is None:
+        response = getattr(error, "response", None)
+        status = getattr(response, "status_code", None)
+    return isinstance(error, (ConnectionError, TimeoutError)) or status in {408, 429, 500, 502, 503, 504}
+
+
+def _retry_call(call: Callable[[], Any], *, deadline: float, attempts: int = 3) -> Any:
+    for number in range(attempts):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("retry deadline exhausted")
+        try:
+            return call()
+        except Exception as error:
+            if number == attempts - 1 or not _is_retryable(error):
+                raise
+            delay = _retry_after(error)
+            delay = delay if delay is not None else min(2**number, 4)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or delay > remaining:
+                raise TimeoutError("retry deadline exhausted") from error
+            time.sleep(delay)
+    raise AssertionError("bounded retry loop exhausted")
+
+
 def verify_completed_interaction(interaction: Any) -> VerifiedAnalysis:
     status = _value(interaction, "status")
     if status != "completed":
@@ -93,6 +141,27 @@ def verify_completed_interaction(interaction: Any) -> VerifiedAnalysis:
     return VerifiedAnalysis(analysis=analysis, processing_pair_count=len(calls))
 
 
+def retrieve_verified_interaction(
+    client: GeminiClient,
+    interaction_id: str,
+    *,
+    deadline_seconds: float = 300,
+) -> VerifiedAnalysis:
+    deadline = time.monotonic() + deadline_seconds
+    try:
+        retrieved = _retry_call(lambda: client.interactions.get(id=interaction_id), deadline=deadline)
+        while _value(retrieved, "status") == "in_progress" and time.monotonic() < deadline:
+            time.sleep(min(2, deadline - time.monotonic()))
+            retrieved = _retry_call(lambda: client.interactions.get(id=interaction_id), deadline=deadline)
+    except TimeoutError as error:
+        raise InteractionTimeout(str(error)) from error
+    except Exception as error:
+        raise InteractionUnrecoverable(str(error)) from error
+    if _value(retrieved, "status") == "in_progress":
+        raise InteractionTimeout("interaction remained in_progress until the retrieval deadline")
+    return verify_completed_interaction(retrieved)
+
+
 def run_stored_stream(
     client: GeminiClient,
     video: Path,
@@ -106,8 +175,11 @@ def run_stored_stream(
         state = _value(_value(uploaded, "state"), "name")
         deadline = time.monotonic() + upload_deadline_seconds
         while state == "PROCESSING" and time.monotonic() < deadline:
-            time.sleep(2)
-            uploaded = client.files.get(name=_value(uploaded, "name"))
+            time.sleep(min(2, deadline - time.monotonic()))
+            uploaded = _retry_call(
+                lambda: client.files.get(name=_value(uploaded, "name")),
+                deadline=deadline,
+            )
             state = _value(_value(uploaded, "state"), "name")
     except Exception as error:
         raise UploadFailed(str(error)) from error
@@ -162,11 +234,7 @@ def run_stored_stream(
         raise UntrustedInteraction("stream ended without an interaction ID")
     if not completed:
         raise InteractionTimeout("stream ended without interaction.completed")
-    try:
-        retrieved = client.interactions.get(id=interaction_id)
-    except Exception as error:
-        raise InteractionUnrecoverable(str(error)) from error
-    return verify_completed_interaction(retrieved)
+    return retrieve_verified_interaction(client, interaction_id)
 
 
 def create_client() -> GeminiClient:
