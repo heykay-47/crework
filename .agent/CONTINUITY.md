@@ -38,7 +38,7 @@
 
 ## [OUTCOMES]
 
-- 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Commit remains.
+- 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Implementation committed as `a561bb2`.
 - 2026-09-17T13:53:32Z [TOOL] Issue #11 implementation passed Docker build, 28 tests, strict mypy, and two-axis review; committed as `aff206b` and ready for issue closure.
 - 2026-09-17T08:53:02Z [TOOL] [MILESTONE] Wayfinding completed at issue #1; schema, policy, approval safety, evidence, and proof contracts are linked from the closed map.
 - 2026-09-17T13:08:52Z [TOOL] Issue #10 is implemented in commit `f7a256d`, reviewed, verified, and closed; the next frontier should be recomputed from issues #11–#19.
