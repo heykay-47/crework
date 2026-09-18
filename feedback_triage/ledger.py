@@ -54,6 +54,35 @@ class RunLedger:
     def analysis_fingerprint(self) -> str:
         return cast(str, self._data["analysis_fingerprint"])
 
+    @property
+    def fingerprint_inputs(self) -> dict[str, str]:
+        """Return the inputs that produced this behavior fingerprint."""
+
+        values = self._data.get("fingerprint_inputs", {})
+        if not isinstance(values, dict) or not all(
+            isinstance(key, str) and isinstance(value, str) for key, value in values.items()
+        ):
+            raise LedgerInvalid("Run Ledger fingerprint inputs are invalid")
+        return dict(values)
+
+    @property
+    def reconciliation_errors(self) -> tuple[dict[str, Any], ...]:
+        """Return persisted reconciliation failures without exposing mutable state."""
+
+        values = self._data.get("reconciliation_errors", [])
+        if not isinstance(values, list) or not all(isinstance(value, dict) for value in values):
+            raise LedgerInvalid("Run Ledger reconciliation errors must be a list of objects")
+        return tuple(deepcopy(cast(list[dict[str, Any]], values)))
+
+    @property
+    def conflict_resolutions(self) -> tuple[dict[str, Any], ...]:
+        """Return persisted conflict resolutions without exposing mutable state."""
+
+        values = self._data.get("conflict_resolutions", [])
+        if not isinstance(values, list) or not all(isinstance(value, dict) for value in values):
+            raise LedgerInvalid("Run Ledger conflict resolutions must be a list of objects")
+        return tuple(deepcopy(cast(list[dict[str, Any]], values)))
+
     @classmethod
     def create(
         cls,
@@ -593,6 +622,15 @@ class RunLedger:
         values = self._data.get("declines", [])
         if not isinstance(values, list) or not all(isinstance(value, dict) for value in values):
             raise LedgerInvalid("Run Ledger declines must be a list of objects")
+        return tuple(deepcopy(cast(list[dict[str, Any]], values)))
+
+    @property
+    def approval_events(self) -> tuple[dict[str, Any], ...]:
+        """Return Approval event metadata for sanitized reporting."""
+
+        values = self._data.get("approvals", [])
+        if not isinstance(values, list) or not all(isinstance(value, dict) for value in values):
+            raise LedgerInvalid("Run Ledger approvals must be a list of objects")
         return tuple(deepcopy(cast(list[dict[str, Any]], values)))
 
     def record_approval(self, attempt_id: str, approval: Approval) -> None:

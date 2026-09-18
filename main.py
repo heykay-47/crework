@@ -5,15 +5,22 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, cast
 
-from feedback_triage.acceptance import AcceptanceError, AcceptanceStore, ManualBaseline
+from feedback_triage.acceptance import AcceptanceError, AcceptanceRecord, AcceptanceStore, ManualBaseline
 from feedback_triage.analyze import AnalysisFailed, analysis_fingerprint, file_sha256, triage_recording
 from feedback_triage.github import GitHubApiError, GitHubIssueClient
 from feedback_triage.evaluation import GroundTruthManifest, ScoreReport, load_ground_truth, score_policy_result
 from feedback_triage.gemini_video import PROMPT
 from feedback_triage.ledger import LedgerInvalid, LedgerLocked, RunLedger
 from feedback_triage.models import PolicyResult, VerifiedAnalysis
+from feedback_triage.proof import (
+    IMAGE_SEQUENCE,
+    GifTimeline,
+    ProofIncident,
+    ProofPackageError,
+    build_proof_package,
+)
 from feedback_triage.writes import ExternalWriteFailure, WriteCoordinator, terminal_review_decision
 
 
@@ -82,6 +89,39 @@ def parser() -> argparse.ArgumentParser:
         metavar="CANDIDATE_ID=ISSUE_NUMBER",
         help="explicitly select the canonical Issue for a recorded marker conflict; repeat per Candidate",
     )
+    package = subcommands.add_parser(
+        "package",
+        aliases=["proof"],
+        help="freeze a passed acceptance cycle as a sanitized, claim-linked proof bundle",
+    )
+    package.add_argument("ledger", nargs="?", type=Path, help="current source Run Ledger JSON")
+    package.add_argument("--ledger", dest="ledger_option", type=Path, help="current source Run Ledger JSON")
+    package.add_argument("--output", type=Path, help="output root used with --source-sha256")
+    package.add_argument("--source-sha256", help="source hash used to resolve the Run Ledger under --output")
+    package.add_argument("--acceptance", type=Path, help="passed acceptance JSON; defaults beside the Run Ledger")
+    package.add_argument("--bundle", type=Path, required=True, help="new destination directory for the frozen bundle")
+    package.add_argument(
+        "--ground-truth",
+        type=Path,
+        default=CANONICAL_GROUND_TRUTH,
+        help="frozen JSON manifest used for deterministic scoring",
+    )
+    package.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        metavar="LABEL=PATH",
+        help=f"sanitized screenshot; repeat for the nine labels: {', '.join(IMAGE_SEQUENCE)}",
+    )
+    package.add_argument("--gif", type=Path, required=True, help="edited third-run GIF")
+    package.add_argument("--gif-timeline", type=Path, required=True, help="sanitized JSON timeline for the GIF")
+    package.add_argument(
+        "--incident",
+        action="append",
+        default=[],
+        type=Path,
+        help="sanitized incident JSON; provide background rejection and zero-write case",
+    )
     return command_parser
 
 
@@ -91,6 +131,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return publish_main(args)
     if args.command == "run":
         return run_main(args)
+    if args.command in {"package", "proof"}:
+        return package_main(args)
     return analyze_main(args)
 
 
@@ -113,6 +155,91 @@ def _load_analysis_inputs(args: argparse.Namespace) -> tuple[GroundTruthManifest
     except (OSError, ValueError) as error:
         raise ValueError(f"invalid_fixture: {error}") from error
     return ground_truth, prompt if prompt is not None else PROMPT, project_context, ground_truth_sha256
+
+
+def _package_ledger_path(args: argparse.Namespace) -> Path:
+    supplied = [path for path in (args.ledger, args.ledger_option) if path is not None]
+    if len(supplied) > 1:
+        raise ValueError("package accepts one Run Ledger path")
+    if supplied:
+        return cast(Path, supplied[0])
+    if args.output is not None and args.source_sha256:
+        return cast(Path, args.output) / cast(str, args.source_sha256) / "ledger.json"
+    raise ValueError("package requires a Run Ledger path or --output with --source-sha256")
+
+
+def _package_images(values: Sequence[str]) -> dict[str, Path]:
+    images: dict[str, Path] = {}
+    for value in values:
+        label, separator, path_text = value.partition("=")
+        if not separator or not label or not path_text:
+            raise ValueError("each --image must use LABEL=PATH")
+        if label in images:
+            raise ValueError(f"duplicate proof image label: {label}")
+        if label not in IMAGE_SEQUENCE:
+            raise ValueError(f"unknown proof image label: {label}")
+        images[label] = Path(path_text)
+    return images
+
+
+def _package_incidents(paths: Sequence[Path]) -> tuple[ProofIncident, ...]:
+    incidents: list[ProofIncident] = []
+    for path in paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise ValueError(f"invalid proof incident JSON: {path.name}") from error
+        if not isinstance(payload, dict):
+            raise ValueError(f"proof incident must be a JSON object: {path.name}")
+        try:
+            incident = ProofIncident.model_validate(payload)
+        except ValueError as error:
+            raise ValueError(f"invalid proof incident: {path.name}") from error
+        evidence = Path(incident.artifact_path)
+        if not evidence.is_absolute():
+            evidence = path.parent / evidence
+        incidents.append(incident.model_copy(update={"artifact_path": str(evidence)}))
+    return tuple(incidents)
+
+
+def package_main(args: argparse.Namespace) -> int:
+    """Freeze persisted proof state without invoking analysis or GitHub."""
+
+    try:
+        ledger_path = _package_ledger_path(args)
+        ledger = RunLedger.load(ledger_path)
+        acceptance_path = args.acceptance or ledger_path.with_name("acceptance.json")
+        acceptance = AcceptanceRecord.model_validate_json(acceptance_path.read_text(encoding="utf-8"))
+        ground_truth = load_ground_truth(args.ground_truth)
+        timeline = GifTimeline.model_validate_json(args.gif_timeline.read_text(encoding="utf-8"))
+        package = build_proof_package(
+            acceptance,
+            ledger,
+            ground_truth,
+            bundle_dir=args.bundle,
+            images=_package_images(args.image),
+            gif=args.gif,
+            gif_timeline=timeline,
+            incidents=_package_incidents(args.incident),
+        )
+    except (LedgerInvalid, OSError, ValueError, ProofPackageError) as error:
+        print(json.dumps({"status": "failed", "code": "proof_package_invalid", "detail": str(error)}))
+        return 1
+    print(
+        json.dumps(
+            {
+                "status": "packaged",
+                "bundle": str(args.bundle),
+                "source_sha256": package.source_sha256,
+                "current_fingerprint": package.current_fingerprint,
+                "final_attempt_id": package.final_attempt_id,
+                "artifact_count": len(package.artifacts),
+                "claim_count": len(package.claim_index),
+            },
+            indent=2,
+        )
+    )
+    return 0
 
 
 def _acceptance_store(

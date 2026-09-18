@@ -71,6 +71,35 @@ The first two commands require fresh, completed, semantically passing analyses a
 
 The manual baseline is a measured JSON artifact for the same previously unseen recording. It must contain `source_sha256`, `recording_label`, `equivalent_issue_count`, matching positive `equivalent_issue_numbers` for the manually closed demo Issues, positive `watch_seconds`, `issue_writing_seconds`, and `active_human_seconds`, plus timezone-qualified `measured_at`. The canonical cycle expects three equivalent Issues. Before analysis, `run` reads those Issue numbers and refuses to continue unless every one is closed; it never closes or otherwise mutates them. Successful acceptance records upload, Gemini analysis/usage, Evidence Frame, active-review, write, wall-clock, and active-human measurements without extrapolating a manual baseline.
 
+## Freeze a public proof bundle
+
+After the acceptance cycle passes, use the read-only `package` command (also available as `proof`) to copy reviewer-supplied screenshots, the edited third-run GIF, and sanitized incident evidence into a new immutable bundle. It loads the persisted Acceptance Record and Run Ledger, validates current and archived fingerprint epochs, recomputes the deterministic score, and writes `manifest.json`, `claim-index.json`, `deterministic-report.json`, `ledger.json`, the nine-image sequence, Evidence Frames, GIF timeline, and incident artifacts. It does not analyze, call Gemini, prompt for Approval, or write to GitHub.
+
+The command requires one image for each fixed label, a real 20-30 second GIF, a timeline JSON describing the four third-run events and measured removed waits, and incident JSON for both the rejected background interaction and an incomplete or uncertain zero-write case:
+
+```bash
+docker run --rm --user "$(id -u):$(id -g)" \
+  --mount type=bind,src="$PWD/output",dst=/output \
+  --mount type=bind,src="$PWD/proof-inputs",dst=/proof-inputs,readonly \
+  client-feedback-triage package /output/<source-sha256>/ledger.json \
+  --bundle /output/<source-sha256>/proof-bundle \
+  --gif /proof-inputs/third-run.gif \
+  --gif-timeline /proof-inputs/third-run-timeline.json \
+  --image capability-date=/proof-inputs/01-capability-date.png \
+  --image fixture-manifest=/proof-inputs/02-fixture-manifest.png \
+  --image request-trust=/proof-inputs/03-request-trust.png \
+  --image three-run-summary=/proof-inputs/04-three-run-summary.png \
+  --image six-routes=/proof-inputs/05-six-routes.png \
+  --image evidence-frames=/proof-inputs/06-evidence-frames.png \
+  --image manual-review-approval=/proof-inputs/07-manual-review-approval.png \
+  --image final-issues=/proof-inputs/08-final-issues.png \
+  --image sanitized-run-ledger=/proof-inputs/09-sanitized-run-ledger.png \
+  --incident /proof-inputs/background-rejection.json \
+  --incident /proof-inputs/zero-write-case.json
+```
+
+The bundle is rejected if an artifact contains credentials, authorization tokens, private filesystem paths, or email-like personal data. Source paths remain command inputs only; the manifest and sanitized ledger contain bundle-relative artifact paths and allowlisted metadata.
+
 ## Review and publish GitHub Issues
 
 After a verified analysis, use the terminal `publish` command. It prompts as needed for each policy-admitted Candidate and Manual Review result; unchanged persisted Approvals resume without another prompt. Clarification Requests and Withheld Results are never offered for Approval. A Manual Review must be confirmed or edited before it can be approved. The GitHub token is read from `GITHUB_TOKEN` and is never written to the Run Ledger or printed:
