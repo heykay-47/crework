@@ -2,11 +2,14 @@
 
 ## [PLANS]
 
+- 2026-09-18T00:00:00Z [USER] Implement GitHub issue #15 with TDD at the approval/write seams, run targeted checks and the full suite, review with `/code-review`, then commit on the current branch.
 - 2026-09-17T18:08:54Z [USER] Implement GitHub issue #14 with TDD at the settled Evidence Frame seams, run targeted checks, final checks and `/code-review`, then commit on the current branch.
 - 2026-09-17T09:30:57Z [USER] Implement approved GitHub issues #10–#19 in dependency order; issue #10 is the first tracer bullet.
 
 ## [DECISIONS]
 
+- 2026-09-18T00:00:00Z [CODE] Issue #15 uses explicit Approval snapshots and destination-scoped Issue Records around the existing atomic per-source Run Ledger; the exact `crework:v1` source/candidate marker is the only deduplication identity, and the stdlib GitHub adapter performs no automatic Issue-create retry.
+- 2026-09-18T02:58:23Z [CODE] Issue #15 keeps Approval snapshots and Issue Records frozen/deeply immutable, reloads the ledger after source-lock acquisition, and treats written-event/Issue-Record disagreement as a conflict rather than permission to recreate.
 - 2026-09-17T17:39:14Z [USER] Future commits in `crework` use GitHub identity `heykay-47 <krithick008@proton.me>` via repository-local Git configuration.
 - 2026-09-17T14:35:10Z [CODE] Issue #12 keeps malformed shape/value failures at the verified-output boundary as `output_invalid`; deterministic cross-field, topic, duplicate-ID/group, and duration checks fail the whole analysis as `policy_failed`.
 - 2026-09-17T18:08:54Z [CODE] Issue #14 keeps Evidence Frame extraction outside Gemini and policy schemas: normalized-span timestamp selection is public and deterministic; strict frame records are persisted per Candidate under the verified attempt, and FFmpeg failures are nonterminal.
@@ -45,11 +48,13 @@
 - 2026-09-17T13:08:52Z [TOOL] `google-genai==2.24.0` requires nested `response_format.text`; agentic output still needed an explicit exact JSON shape in the prompt to reliably satisfy the schema.
 - 2026-09-17T13:08:52Z [TOOL] A live owned synthetic Feedback Recording completed with two matched processing pairs and schema-valid output; earlier transient stream errors were recorded fail-closed.
 - 2026-09-17T13:08:52Z [TOOL] Final verification: Docker image built, host-UID container invalid-input run persisted `invalid_input`, 19 tests passed, and strict mypy passed.
+- 2026-09-18T02:58:23Z [TOOL] Post-review targeted verification passed: 35 coordinator/write/GitHub/ledger tests, strict mypy across `feedback_triage`, `main.py`, and `tests`, and `git diff --check`; the second spec review found no remaining ticket gaps, while a standards review's only hard finding was an ASCII-style en dash that was removed.
 
 ## [OUTCOMES]
 
 - 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Implementation committed as `a561bb2`.
 - 2026-09-17T18:45:07Z [TOOL] Issue #14 implementation committed as `8a1adba`: public deterministic frame selection, strict extraction records, per-attempt ledger persistence, nonterminal FFmpeg handling, CLI output, tests, and README documentation are complete; both canonical required frames were visually inspected.
+- 2026-09-18T02:58:23Z [CODE] Ticket #15 implementation is complete in the working tree pending final full-suite verification, final review record, and commit; added persisted write-event validation, missing-record conflict coverage, stable Issue Record comparison ignoring only `recorded_at`, and null-body/destination checks in the GitHub adapter.
 - 2026-09-17T17:05:00Z [TOOL] Issue #13 implementation committed as `77ce39a`: canonical fixture SHA `f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc`, duration `360.026667`, frozen manifest `canonical-six-case-v3`, and retained live semantic pass in `output/live-v12/result.json`.
 - 2026-09-17T13:53:32Z [TOOL] Issue #11 implementation passed Docker build, 28 tests, strict mypy, and two-axis review; committed as `aff206b` and ready for issue closure.
 - 2026-09-17T08:53:02Z [TOOL] [MILESTONE] Wayfinding completed at issue #1; schema, policy, approval safety, evidence, and proof contracts are linked from the closed map.

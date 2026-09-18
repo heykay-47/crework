@@ -1,7 +1,10 @@
+import hashlib
+import json
 import math
-from typing import Literal, Self
+from datetime import datetime
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 ReasonCode = Literal["question_not_request", "decision_not_request", "non_actionable_commentary", "low_confidence"]
 ObservationType = Literal["bug", "change_request", "feature_request", "question", "decision", "reaction", "commentary"]
@@ -9,12 +12,46 @@ Intent = Literal["explicit_change", "explicit_problem", "ambiguous_reaction", "q
 Route = Literal["candidate", "manual_review", "clarification_request", "withheld_result"]
 EvidenceFrameStatus = Literal["extracted", "failed"]
 
+SOURCE_SHA256_PATTERN = r"^[0-9a-f]{64}$"
+CANDIDATE_ID_PATTERN = r"^cand_[0-9a-f]{16}$"
+
+
+def _to_tuple(value: Any) -> tuple[Any, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise TypeError("immutable collection fields require a list or tuple")
+    return tuple(value)
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
+class IssuePayload(StrictModel):
+    """The exact rendered request sent to the GitHub Issues adapter."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    title: str = Field(min_length=1)
+    body: str = Field(min_length=1)
+    labels: Annotated[tuple[str, ...], BeforeValidator(_to_tuple)] = ()
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> Self:
+        if not self.title.strip() or not self.body.strip():
+            raise ValueError("Issue payload title and body must not be blank")
+        if any(not label.strip() for label in self.labels):
+            raise ValueError("Issue payload labels must not be blank")
+        return self
+
+
+def issue_payload_hash(payload: IssuePayload) -> str:
+    encoded = json.dumps(payload.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 class EvidenceSpan(StrictModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
     start_seconds: float
     end_seconds: float
     keyframe_seconds: float | None = None
@@ -71,6 +108,8 @@ class VerifiedAnalysis(StrictModel):
 
 
 class RoutedResult(StrictModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
     route: Route
     candidate_id: str = Field(pattern=r"^cand_[0-9a-f]{16}$")
     topic_key: str
@@ -80,10 +119,10 @@ class RoutedResult(StrictModel):
     component: str | None
     summary: str
     requested_outcome: str | None
-    acceptance_criteria: list[str]
+    acceptance_criteria: Annotated[tuple[str, ...], BeforeValidator(_to_tuple)]
     clarification_question: str | None
     confidence: Literal["high", "medium", "low"]
-    evidence: list[EvidenceSpan]
+    evidence: Annotated[tuple[EvidenceSpan, ...], BeforeValidator(_to_tuple)]
     evidence_frame_seconds: float
     rationale: str
     approval_eligible: bool
@@ -126,4 +165,76 @@ class EvidenceFrameRecord(StrictModel):
             raise ValueError("failed Evidence Frames cannot contain a path")
         elif self.error is None or not self.error.strip():
             raise ValueError("failed Evidence Frames require an error")
+        return self
+
+
+class Approval(StrictModel):
+    """An explicit human decision for one immutable Candidate snapshot."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    source_sha256: str = Field(pattern=SOURCE_SHA256_PATTERN)
+    candidate_id: str = Field(pattern=CANDIDATE_ID_PATTERN)
+    destination_repository: str = Field(pattern=r"^[a-z0-9_.-]+/[a-z0-9_.-]+$")
+    candidate_snapshot: RoutedResult
+    candidate_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    payload: IssuePayload
+    payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved_at: str = Field(min_length=1)
+    operator_label: str | None = None
+    manual_review_confirmed: bool = False
+
+    @model_validator(mode="after")
+    def validate_approval(self) -> Self:
+        if self.candidate_snapshot.candidate_id != self.candidate_id:
+            raise ValueError("Approval Candidate identity does not match its snapshot")
+        if self.candidate_snapshot.route == "candidate":
+            if not self.candidate_snapshot.approval_eligible:
+                raise ValueError("only Approval-eligible Candidates may be approved")
+        elif self.candidate_snapshot.route == "manual_review":
+            if not self.manual_review_confirmed:
+                raise ValueError("Manual Review requires explicit confirmation before Approval")
+        else:
+            raise ValueError("only policy-admitted Candidates may be approved")
+        marker = f"<!-- crework:v1 source_sha256={self.source_sha256} candidate_id={self.candidate_id} -->"
+        if self.payload.body.count(marker) != 1 or self.payload.body.count("<!-- crework:v1 ") != 1:
+            raise ValueError("Approval payload must contain exactly one stable Candidate marker")
+        if issue_payload_hash(self.payload) != self.payload_hash:
+            raise ValueError("Approval payload hash does not match its rendered payload")
+        try:
+            timestamp = datetime.fromisoformat(self.approved_at)
+        except ValueError as error:
+            raise ValueError("Approval timestamp must be ISO-8601") from error
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("Approval timestamp must include a timezone")
+        if self.operator_label is not None and not self.operator_label.strip():
+            raise ValueError("Approval operator label must not be blank")
+        return self
+
+
+class IssueRecord(StrictModel):
+    """A verified, destination-scoped link to one remote GitHub Issue."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    source_sha256: str = Field(pattern=SOURCE_SHA256_PATTERN)
+    candidate_id: str = Field(pattern=CANDIDATE_ID_PATTERN)
+    destination_repository: str = Field(pattern=r"^[a-z0-9_.-]+/[a-z0-9_.-]+$")
+    issue_number: int = Field(gt=0)
+    html_url: str = Field(min_length=1)
+    marker: str = Field(min_length=1)
+    payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    recorded_at: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_record(self) -> Self:
+        expected = f"<!-- crework:v1 source_sha256={self.source_sha256} candidate_id={self.candidate_id} -->"
+        if self.marker != expected:
+            raise ValueError("Issue Record marker does not match its source and Candidate identity")
+        try:
+            timestamp = datetime.fromisoformat(self.recorded_at)
+        except ValueError as error:
+            raise ValueError("Issue Record timestamp must be ISO-8601") from error
+        if timestamp.tzinfo is None or timestamp.utcoffset() is None:
+            raise ValueError("Issue Record timestamp must include a timezone")
         return self

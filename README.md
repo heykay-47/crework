@@ -1,6 +1,6 @@
 # Client Feedback Triage
 
-The tracer analyzes one owned synthetic **Feedback Recording** through Gemini agentic video, verifies the stored `AnalysisResult`, and routes its Observations through deterministic policy. It does not grant Approval or call GitHub.
+The tracer analyzes one owned synthetic **Feedback Recording** through Gemini agentic video, verifies the stored `AnalysisResult`, and routes its Observations through deterministic policy. Analysis is separate from the explicit human review and GitHub Issue publishing step.
 
 ## Build and run
 
@@ -35,6 +35,29 @@ The command FFprobes the input before creating a Gemini client. It then uploads 
 3. `output_text` to pass the v1 Pydantic schema.
 
 The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations. After policy persistence, actionable `candidate` and `manual_review` routes also receive a local Evidence Frame under `output/<source-sha256>/evidence-frames/<attempt-id>/<candidate-id>.png`.
+
+## Review and publish GitHub Issues
+
+After a verified analysis, use the terminal `publish` command. It prompts as needed for each policy-admitted Candidate and Manual Review result; unchanged persisted Approvals resume without another prompt. Clarification Requests and Withheld Results are never offered for Approval. A Manual Review must be confirmed or edited before it can be approved. The GitHub token is read from `GITHUB_TOKEN` and is never written to the Run Ledger or printed:
+
+```bash
+docker run --rm -it --user "$(id -u):$(id -g)" \
+  --env GITHUB_TOKEN \
+  --mount type=bind,src="$PWD/inbox",dst=/input,readonly \
+  --mount type=bind,src="$PWD/output",dst=/output \
+  client-feedback-triage publish /input/synthetic-feedback.mp4 \
+  --output /output \
+  --repository demo/feedback \
+  --operator-label "demo review"
+```
+
+Each Approval is an immutable snapshot of the source SHA-256, stable Candidate ID, destination, complete rendered payload, payload hash, reviewed Candidate prose baseline, approval timestamp, and optional operator label. The Issue body contains exactly one marker:
+
+```text
+<!-- crework:v1 source_sha256=<64-lowercase-hex> candidate_id=<cand_...> -->
+```
+
+The command holds a source-scoped lock, reconciles pending writes and existing Issue Records, searches open and closed Issues for the exact marker, persists `approved` and then `write_pending` before a POST, and submits approved Candidates sequentially. An existing exact marker is adopted without POST. A create response is accepted only after destination, Issue number, and marker verification; a destination-scoped Issue Record is persisted immediately. Issue creation is never automatically retried. Use `--retry-failed` only for a definitive rejection, or use both `--retry-uncertain --confirm-no-issue` after an explicit human certification. A lost response or zero-match reconciliation remains fail-closed.
 
 ## Canonical semantic evaluation
 
@@ -78,7 +101,7 @@ Policy routes each merged result in this order:
 4. visually inferred possible bugs and other medium-confidence actionable groups require **Manual Review**;
 5. high-confidence explicit changes and problems become Approval-eligible **Candidates**.
 
-Approval eligibility is only a route property; it is not Approval. Clarification Requests, Manual Review results, and Withheld Results cannot reach Approval in this run. Every route, reason code, normalized evidence span, and selected Evidence Frame timestamp is printed by the command and stored under `policy_result` in the Run Ledger. Frame selection uses the earliest visual keyframe, then the earliest visual-span midpoint, then the earliest supplied keyframe, and finally the earliest normalized-span midpoint. FFmpeg is invoked without a shell; a nonzero exit, missing executable, timeout, or missing/empty output records an `EvidenceFrameRecord` with `status: "failed"` and an error. That failure is visible in the top-level `evidence_frames` output but leaves the Candidate route, verified attempt, and policy result intact. A policy contradiction records `policy_failed` and emits no routes; malformed model output records `output_invalid` before policy.
+Approval eligibility is only a route property; it is not Approval. Candidates may be approved explicitly, and Manual Review results require confirmation or editing first. Clarification Requests and Withheld Results cannot be approved. Every route, reason code, normalized evidence span, and selected Evidence Frame timestamp is printed by the command and stored under `policy_result` in the Run Ledger. Frame selection uses the earliest visual keyframe, then the earliest visual-span midpoint, then the earliest supplied keyframe, and finally the earliest normalized-span midpoint. FFmpeg is invoked without a shell; a nonzero exit, missing executable, timeout, or missing/empty output records an `EvidenceFrameRecord` with `status: "failed"` and an error. That failure is visible in the top-level `evidence_frames` output but leaves the Candidate route, verified attempt, and policy result intact. A policy contradiction records `policy_failed` and emits no routes; malformed model output records `output_invalid` before policy.
 
 Normal reruns never create a replacement interaction. They reuse an already verified result or retrieve the exact persisted interaction ID until it is reconciled. An attempt without a persisted interaction ID blocks further work. Use `--reanalyze` only when an intentionally fresh attempt is required; it appends to the Run Ledger and preserves every earlier attempt.
 

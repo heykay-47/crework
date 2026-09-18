@@ -189,7 +189,9 @@ def _compare_required(case: GroundTruthCase, result: RoutedResult, errors: list[
         case.case_id,
         errors,
     )
-    _compare_text("acceptance criteria", expected.acceptance_criteria, result.acceptance_criteria, case.case_id, errors)
+    _compare_text(
+        "acceptance criteria", expected.acceptance_criteria, list(result.acceptance_criteria), case.case_id, errors
+    )
     _compare_text(
         "clarification question",
         expected.clarification_question,

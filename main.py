@@ -1,12 +1,17 @@
 import argparse
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Sequence
 
 from feedback_triage.analyze import AnalysisFailed, file_sha256, triage_recording
+from feedback_triage.github import GitHubIssueClient
 from feedback_triage.evaluation import load_ground_truth, score_policy_result
 from feedback_triage.gemini_video import PROMPT
-from feedback_triage.ledger import LedgerInvalid
+from feedback_triage.ledger import LedgerInvalid, LedgerLocked, RunLedger
+from feedback_triage.models import PolicyResult
+from feedback_triage.writes import ExternalWriteFailure, WriteCoordinator, terminal_review_decision
 
 
 def parser() -> argparse.ArgumentParser:
@@ -19,11 +24,33 @@ def parser() -> argparse.ArgumentParser:
     analyze.add_argument("--prompt", type=Path, help="frozen prompt text to send with the recording")
     analyze.add_argument("--context", type=Path, help="project context text to send with the recording")
     analyze.add_argument("--ground-truth", type=Path, help="frozen JSON manifest used for semantic scoring")
+    publish = subcommands.add_parser(
+        "publish",
+        help="review admitted Candidates and write explicitly approved GitHub Issues",
+    )
+    publish.add_argument("video", type=Path)
+    publish.add_argument("--output", type=Path, default=Path("output"))
+    publish.add_argument("--repository", required=True, help="destination GitHub repository owner/name")
+    publish.add_argument("--operator-label", help="optional audit label recorded with each Approval")
+    publish.add_argument("--reconsider", action="store_true", help="explicitly revisit unchanged declined snapshots")
+    publish.add_argument("--retry-failed", action="store_true", help="explicitly retry a definitive create failure")
+    publish.add_argument(
+        "--retry-uncertain",
+        action="store_true",
+        help="request retry of an uncertain write after certifying no Issue was found",
+    )
+    publish.add_argument(
+        "--confirm-no-issue",
+        action="store_true",
+        help="record the human certification required with --retry-uncertain",
+    )
     return command_parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
+    if args.command == "publish":
+        return publish_main(args)
     try:
         ground_truth = load_ground_truth(args.ground_truth) if args.ground_truth else None
         fixture_dir = args.ground_truth.parent if args.ground_truth else None
@@ -83,6 +110,76 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
     return 0 if score is None or score.passed else 1
+
+
+def publish_main(args: argparse.Namespace) -> int:
+    try:
+        source_sha256 = file_sha256(args.video)
+        ledger = RunLedger.load(args.output / source_sha256 / "ledger.json")
+        verified_attempts = [attempt for attempt in ledger.attempts if attempt.get("status") == "verified"]
+        if not verified_attempts:
+            raise LedgerInvalid("publish requires a verified analysis attempt")
+        policy_data = verified_attempts[-1].get("policy_result")
+        if not isinstance(policy_data, dict):
+            raise LedgerInvalid("publish requires a persisted policy result")
+        policy = PolicyResult.model_validate(policy_data)
+        token = os.environ.get("GITHUB_TOKEN", "")
+        github = GitHubIssueClient(token)
+        outcomes = WriteCoordinator(ledger, github).review_and_publish(
+            policy.results,
+            source_sha256=source_sha256,
+            destination_repository=args.repository,
+            attempt_id=str(verified_attempts[-1]["attempt_id"]),
+            decision_fn=lambda candidate: terminal_review_decision(
+                candidate,
+                emit=lambda text: print(text, file=sys.stderr),
+            ),
+            operator_label=args.operator_label,
+            reconsider=args.reconsider,
+            retry_failed=args.retry_failed,
+            retry_uncertain=args.retry_uncertain,
+            confirm_no_issue=args.confirm_no_issue,
+        )
+    except ExternalWriteFailure as error:
+        print(
+            json.dumps(
+                {
+                    "status": "failed",
+                    "code": error.code,
+                    "candidate_id": error.candidate_id,
+                    "destination_repository": error.destination_repository,
+                    "payload_hash": error.payload_hash,
+                    "detail": error.detail,
+                }
+            )
+        )
+        return 1
+    except (LedgerInvalid, LedgerLocked, OSError, ValueError) as error:
+        code = "ledger_locked" if isinstance(error, LedgerLocked) else "publish_invalid"
+        print(json.dumps({"status": "failed", "code": code, "detail": str(error)}))
+        return 1
+
+    status = "completed" if outcomes else "stopped"
+    print(
+        json.dumps(
+            {
+                "status": status,
+                "ledger": str(ledger.path),
+                "destination_repository": args.repository,
+                "outcomes": [
+                    {
+                        "candidate_id": outcome.candidate_id,
+                        "state": outcome.state,
+                        "issue_number": outcome.issue_record.issue_number,
+                        "html_url": outcome.issue_record.html_url,
+                    }
+                    for outcome in outcomes
+                ],
+            },
+            indent=2,
+        )
+    )
+    return 0
 
 
 if __name__ == "__main__":
