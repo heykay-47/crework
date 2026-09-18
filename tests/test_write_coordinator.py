@@ -9,7 +9,7 @@ from feedback_triage.approval import build_approval, marker_for
 from feedback_triage.github import GitHubApiError, GitHubIssue, GitHubTransportError
 from feedback_triage.ledger import LedgerLocked, RunLedger
 from feedback_triage.models import RoutedResult
-from feedback_triage.writes import ExternalWriteFailure, ReviewDecision, WriteCoordinator
+from feedback_triage.writes import ExternalWriteFailure, ReviewDecision, WriteCoordinator, terminal_review_decision
 
 
 def candidate(candidate_id: str = "cand_aaaaaaaaaaaaaaaa") -> RoutedResult:
@@ -43,6 +43,21 @@ def candidate(candidate_id: str = "cand_aaaaaaaaaaaaaaaa") -> RoutedResult:
             "reason_code": None,
         }
     )
+
+
+def test_manual_review_prompt_exposes_evidence_frame_for_visual_confirmation() -> None:
+    manual = candidate("cand_bbbbbbbbbbbbbbbb").model_copy(update={"route": "manual_review", "approval_eligible": False})
+    emitted: list[str] = []
+
+    decision = terminal_review_decision(
+        manual,
+        prompt=lambda _: "c",
+        emit=emitted.append,
+        evidence_frame_paths=("output/frame.png",),
+    )
+
+    assert decision.action == "approve"
+    assert "Evidence Frame: output/frame.png" in emitted
 
 
 def ledger(tmp_path: Path) -> tuple[RunLedger, str]:
@@ -385,6 +400,35 @@ def test_review_only_prompts_admitted_routes_and_persists_manual_edit(tmp_path: 
     ]
 
 
+def test_acceptance_fresh_review_does_not_reuse_prior_manual_approval(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    manual = candidate("cand_bbbbbbbbbbbbbbbb").model_copy(
+        update={"route": "manual_review", "approval_eligible": False, "confidence": "medium"}
+    )
+    ledger_value.record_policy_result(attempt_id, {"schema_version": "1.0", "results": [manual.model_dump(mode="json")]})
+    prior = build_approval("a" * 64, manual, "demo/feedback", manual_review_confirmed=True)
+    ledger_value.record_approval(attempt_id, prior)
+    github = FakeGitHub(create_results=[remote_issue(prior, 18)])
+    prompted: list[str] = []
+
+    def approve(_: RoutedResult) -> ReviewDecision:
+        prompted.append(manual.candidate_id)
+        return ReviewDecision("approve")
+
+    outcomes = WriteCoordinator(ledger_value, github).review_and_publish(
+        [manual],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=approve,
+        require_fresh_review=True,
+    )
+
+    assert prompted == [manual.candidate_id]
+    assert outcomes[0].state == "created"
+    assert github.create_calls == 1
+
+
 def test_definitive_failure_is_not_retried_without_explicit_action(tmp_path: Path) -> None:
     ledger_value, attempt_id = ledger(tmp_path)
     approval = approved(ledger_value)
@@ -412,6 +456,37 @@ def test_definitive_failure_is_not_retried_without_explicit_action(tmp_path: Pat
     outcomes = coordinator.publish([approval], attempt_id=attempt_id, retry_failed=True)
     assert outcomes[0].state == "created"
     assert github.create_calls == 2
+
+
+def test_review_timing_reports_human_write_and_real_post_counts(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    candidates = [
+        candidate("cand_aaaaaaaaaaaaaaaa"),
+        candidate("cand_bbbbbbbbbbbbbbbb"),
+        candidate("cand_cccccccccccccccc"),
+    ]
+    approvals = [
+        build_approval("a" * 64, value, "demo/feedback", approved_at="2026-01-01T00:00:00+00:00")
+        for value in candidates
+    ]
+    github = FakeGitHub(create_results=[remote_issue(value, number) for number, value in enumerate(approvals, 1)])
+    timings: dict[str, float] = {}
+
+    outcomes = WriteCoordinator(ledger_value, github).review_and_publish(
+        candidates,
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=lambda _: ReviewDecision("approve"),
+        on_timing=timings.__setitem__,
+    )
+
+    assert [outcome.state for outcome in outcomes] == ["created", "created", "created"]
+    assert timings["active_human_seconds"] >= 0
+    assert timings["active_review_seconds"] >= 0
+    assert timings["write_seconds"] >= 0
+    assert timings["external_write_count"] == 3
+    assert github.create_calls == 3
 
 
 def test_exact_marker_after_definitive_failure_is_adopted_without_retry(tmp_path: Path) -> None:

@@ -1,5 +1,6 @@
 import hashlib
 import subprocess
+import time
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -89,6 +90,7 @@ def _ledger_for(
     project_context: str,
     fixture_version: str | None,
     ground_truth_sha256: str | None,
+    reset_on_fingerprint_mismatch: bool = False,
 ) -> RunLedger:
     inputs = analysis_fingerprint_inputs(
         source_sha256,
@@ -98,12 +100,15 @@ def _ledger_for(
         ground_truth_sha256=ground_truth_sha256,
     )
     try:
-        return RunLedger.create(
-            output,
-            source_sha256=source_sha256,
-            fingerprint=fingerprint_inputs_digest(inputs),
-            fingerprint_inputs=inputs,
-        )
+        fingerprint = fingerprint_inputs_digest(inputs)
+        if reset_on_fingerprint_mismatch:
+            return RunLedger.reset_for_fingerprint(
+                output,
+                source_sha256=source_sha256,
+                fingerprint=fingerprint,
+                fingerprint_inputs=inputs,
+            )
+        return RunLedger.create(output, source_sha256=source_sha256, fingerprint=fingerprint, fingerprint_inputs=inputs)
     except LedgerFingerprintMismatch as error:
         raise AnalysisFailed("fingerprint_mismatch", str(error)) from error
 
@@ -112,9 +117,18 @@ def _saved_verified(attempt: dict[str, object]) -> VerifiedAnalysis:
     pair_count = attempt["processing_pair_count"]
     if not isinstance(pair_count, int):
         raise ValueError("saved processing pair count is invalid")
+    raw_usage = attempt.get("gemini_usage")
+    usage: dict[str, int] | None = None
+    if isinstance(raw_usage, dict):
+        parsed_usage: dict[str, int] = {}
+        for key, value in raw_usage.items():
+            if isinstance(key, str) and isinstance(value, int) and not isinstance(value, bool):
+                parsed_usage[key] = value
+        usage = parsed_usage or None
     return VerifiedAnalysis(
         analysis=AnalysisResult.model_validate(attempt["analysis"]),
         processing_pair_count=pair_count,
+        gemini_usage=usage,
     )
 
 
@@ -128,6 +142,7 @@ def analyze_recording(
     project_context: str = "",
     fixture_version: str | None = None,
     ground_truth_sha256: str | None = None,
+    reset_on_fingerprint_mismatch: bool = False,
 ) -> tuple[VideoInfo, VerifiedAnalysis, RunLedger]:
     try:
         source_sha256 = file_sha256(video)
@@ -140,6 +155,7 @@ def analyze_recording(
             project_context=project_context,
             fixture_version=fixture_version,
             ground_truth_sha256=ground_truth_sha256,
+            reset_on_fingerprint_mismatch=reset_on_fingerprint_mismatch,
         )
         attempt_id = ledger.start_attempt()
         ledger.fail(attempt_id, code="invalid_input", detail=str(error))
@@ -151,6 +167,7 @@ def analyze_recording(
         project_context=project_context,
         fixture_version=fixture_version,
         ground_truth_sha256=ground_truth_sha256,
+        reset_on_fingerprint_mismatch=reset_on_fingerprint_mismatch,
     )
     try:
         video_info = probe_video(video)
@@ -166,6 +183,7 @@ def analyze_recording(
                 raise AnalysisFailed("attempt_unreconciled", "prior attempt has no interaction ID")
             if client is None:
                 client = create_client()
+            retrieve_started = time.monotonic()
             try:
                 verified = retrieve_verified_interaction(client, interaction_id)
             except InteractionTimeout as error:
@@ -180,6 +198,9 @@ def analyze_recording(
                 if reanalyze:
                     continue
                 raise AnalysisFailed(error.code, str(error)) from error
+            ledger.record_measurement(str(attempt["attempt_id"]), "analysis_seconds", time.monotonic() - retrieve_started)
+            if verified.gemini_usage is not None:
+                ledger.record_gemini_usage(str(attempt["attempt_id"]), verified.gemini_usage)
             ledger.complete(
                 str(attempt["attempt_id"]),
                 verified.analysis.model_dump(mode="json"),
@@ -207,6 +228,7 @@ def analyze_recording(
             on_diagnostic=lambda event_type: ledger.record_diagnostic(attempt_id, event_type),
             prompt=prompt,
             project_context=project_context,
+            on_timing=lambda name, seconds: ledger.record_measurement(attempt_id, name, seconds),
         )
     except ValidationError as error:
         ledger.fail(attempt_id, code="output_invalid", detail=str(error))
@@ -221,6 +243,8 @@ def analyze_recording(
         if attempt["interaction_id"] is None:
             ledger.fail(attempt_id, code="interaction_unrecoverable", detail=str(error))
         raise AnalysisFailed("interaction_unrecoverable", str(error)) from error
+    if verified.gemini_usage is not None:
+        ledger.record_gemini_usage(attempt_id, verified.gemini_usage)
     ledger.complete(
         attempt_id,
         verified.analysis.model_dump(mode="json"),
@@ -231,25 +255,29 @@ def analyze_recording(
 
 def _record_evidence_frames(video: Path, ledger: RunLedger, attempt_id: str, policy: PolicyResult) -> None:
     frame_directory = ledger.path.parent / "evidence-frames" / attempt_id
-    for result in policy.results:
-        if result.route not in {"candidate", "manual_review"}:
-            continue
-        output_path = frame_directory / f"{result.candidate_id}.png"
-        try:
-            frame = extract_evidence_frame(
-                video,
-                candidate_id=result.candidate_id,
-                timestamp_seconds=result.evidence_frame_seconds,
-                output_path=output_path,
-            )
-        except (OSError, subprocess.SubprocessError, ValueError) as error:
-            frame = EvidenceFrameRecord(
-                candidate_id=result.candidate_id,
-                timestamp_seconds=result.evidence_frame_seconds,
-                status="failed",
-                error=f"Evidence Frame extraction failed: {error}",
-            )
-        ledger.record_evidence_frame(attempt_id, frame)
+    started = time.monotonic()
+    try:
+        for result in policy.results:
+            if result.route not in {"candidate", "manual_review"}:
+                continue
+            output_path = frame_directory / f"{result.candidate_id}.png"
+            try:
+                frame = extract_evidence_frame(
+                    video,
+                    candidate_id=result.candidate_id,
+                    timestamp_seconds=result.evidence_frame_seconds,
+                    output_path=output_path,
+                )
+            except (OSError, subprocess.SubprocessError, ValueError) as error:
+                frame = EvidenceFrameRecord(
+                    candidate_id=result.candidate_id,
+                    timestamp_seconds=result.evidence_frame_seconds,
+                    status="failed",
+                    error=f"Evidence Frame extraction failed: {error}",
+                )
+            ledger.record_evidence_frame(attempt_id, frame)
+    finally:
+        ledger.record_measurement(attempt_id, "frame_seconds", time.monotonic() - started)
 
 
 def triage_recording(
@@ -262,6 +290,8 @@ def triage_recording(
     project_context: str = "",
     fixture_version: str | None = None,
     ground_truth_sha256: str | None = None,
+    extract_evidence_frames: bool = True,
+    reset_on_fingerprint_mismatch: bool = False,
 ) -> tuple[VideoInfo, VerifiedAnalysis, PolicyResult, RunLedger]:
     video_info, verified, ledger = analyze_recording(
         video,
@@ -272,6 +302,7 @@ def triage_recording(
         project_context=project_context,
         fixture_version=fixture_version,
         ground_truth_sha256=ground_truth_sha256,
+        reset_on_fingerprint_mismatch=reset_on_fingerprint_mismatch,
     )
     attempt_id = str(ledger.attempts[-1]["attempt_id"])
     try:
@@ -284,5 +315,6 @@ def triage_recording(
         ledger.fail(attempt_id, code=error.code, detail=str(error))
         raise AnalysisFailed(error.code, str(error)) from error
     ledger.record_policy_result(attempt_id, policy.model_dump(mode="json"))
-    _record_evidence_frames(video, ledger, attempt_id, policy)
+    if extract_evidence_frames:
+        _record_evidence_frames(video, ledger, attempt_id, policy)
     return video_info, verified, policy, ledger

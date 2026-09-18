@@ -58,6 +58,39 @@ def test_interaction_id_is_atomically_recorded_before_diagnostics(tmp_path: Path
     assert not list(ledger.path.parent.glob("*.tmp"))
 
 
+def test_attempt_measurements_and_gemini_usage_are_persisted(tmp_path: Path) -> None:
+    ledger = RunLedger.create(
+        tmp_path, source_sha256="a" * 64, fingerprint="b" * 64, fingerprint_inputs={"source": "a" * 64}
+    )
+    attempt_id = ledger.start_attempt()
+
+    ledger.record_measurement(attempt_id, "upload_seconds", 1.25)
+    ledger.record_gemini_usage(attempt_id, {"total_token_count": 18})
+
+    saved = json.loads(ledger.path.read_text())
+    assert saved["attempts"][0]["measurements"] == {"upload_seconds": 1.25}
+    assert saved["attempts"][0]["gemini_usage"] == {"total_token_count": 18}
+
+
+@pytest.mark.parametrize(
+    ("operation", "value"),
+    [("measurement", float("nan")), ("measurement", -1.0), ("usage", {"total_tokens": -1})],
+)
+def test_invalid_attempt_measurements_and_usage_are_rejected(
+    tmp_path: Path, operation: str, value: object
+) -> None:
+    ledger = RunLedger.create(
+        tmp_path, source_sha256="a" * 64, fingerprint="b" * 64, fingerprint_inputs={"source": "a" * 64}
+    )
+    attempt_id = ledger.start_attempt()
+
+    with pytest.raises(ValueError):
+        if operation == "measurement":
+            ledger.record_measurement(attempt_id, "analysis_seconds", value)  # type: ignore[arg-type]
+        else:
+            ledger.record_gemini_usage(attempt_id, value)  # type: ignore[arg-type]
+
+
 def test_failed_atomic_replace_preserves_previous_ledger(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     ledger = RunLedger.create(
         tmp_path, source_sha256="a" * 64, fingerprint="b" * 64, fingerprint_inputs={"source": "a" * 64}
@@ -81,6 +114,23 @@ def test_existing_ledger_rejects_a_different_fingerprint(tmp_path: Path) -> None
         RunLedger.create(
             tmp_path, source_sha256="a" * 64, fingerprint="c" * 64, fingerprint_inputs={"source": "a" * 64}
         )
+
+
+def test_acceptance_fingerprint_reset_archives_the_previous_ledger(tmp_path: Path) -> None:
+    source = "a" * 64
+    RunLedger.create(tmp_path, source_sha256=source, fingerprint="b" * 64, fingerprint_inputs={"source": source})
+
+    replacement = RunLedger.reset_for_fingerprint(
+        tmp_path,
+        source_sha256=source,
+        fingerprint="c" * 64,
+        fingerprint_inputs={"source": source, "behavior": "changed"},
+    )
+
+    assert replacement.path.exists()
+    assert replacement.path.read_text()
+    assert (tmp_path / source / f"ledger-{'b' * 64}.json").exists()
+    assert json.loads(replacement.path.read_text())["analysis_fingerprint"] == "c" * 64
 
 
 def test_fingerprint_inputs_are_saved_with_the_ledger(tmp_path: Path) -> None:

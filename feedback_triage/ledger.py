@@ -1,7 +1,7 @@
 import json
+import math
 import os
 import re
-import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -15,6 +15,7 @@ from feedback_triage.approval import marker_for
 from pydantic import ValidationError
 
 from feedback_triage.models import Approval, EvidenceFrameRecord, IssueRecord, RoutedResult, routed_result_hash
+from feedback_triage.persistence import atomic_write_json
 
 
 class LedgerFingerprintMismatch(ValueError):
@@ -48,6 +49,10 @@ class RunLedger:
     def __init__(self, path: Path, data: dict[str, Any]) -> None:
         self.path = path
         self._data = data
+
+    @property
+    def analysis_fingerprint(self) -> str:
+        return cast(str, self._data["analysis_fingerprint"])
 
     @classmethod
     def create(
@@ -90,6 +95,33 @@ class RunLedger:
         )
         ledger._write()
         return ledger
+
+    @classmethod
+    def reset_for_fingerprint(
+        cls,
+        output: Path,
+        *,
+        source_sha256: str,
+        fingerprint: str,
+        fingerprint_inputs: dict[str, str],
+    ) -> "RunLedger":
+        """Archive a superseded behavior epoch before starting a fresh ledger."""
+
+        path = output / source_sha256 / "ledger.json"
+        if path.exists():
+            existing = cls.load(path)
+            old_fingerprint = cast(str, existing._data["analysis_fingerprint"])
+            if old_fingerprint != fingerprint:
+                archive = path.with_name(f"ledger-{old_fingerprint}.json")
+                if archive.exists():
+                    raise LedgerInvalid("a ledger archive already exists for the superseded fingerprint")
+                os.replace(path, archive)
+        return cls.create(
+            output,
+            source_sha256=source_sha256,
+            fingerprint=fingerprint,
+            fingerprint_inputs=fingerprint_inputs,
+        )
 
     @classmethod
     def load(cls, path: Path) -> "RunLedger":
@@ -204,10 +236,29 @@ class RunLedger:
                 isinstance(item, str) for item in attempt["diagnostics"]
             ):
                 raise LedgerInvalid("existing Run Ledger contains invalid diagnostics")
+            measurements = attempt.get("measurements", {})
+            if not isinstance(measurements, dict) or not all(
+                isinstance(key, str)
+                and isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value >= 0
+                for key, value in measurements.items()
+            ):
+                raise LedgerInvalid("existing attempt contains invalid measurements")
+            gemini_usage = attempt.get("gemini_usage", {})
+            if not isinstance(gemini_usage, dict) or not all(
+                isinstance(key, str)
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and value >= 0
+                for key, value in gemini_usage.items()
+            ):
+                raise LedgerInvalid("existing attempt contains invalid Gemini usage")
             if attempt["status"] == "verified":
                 if not isinstance(attempt.get("analysis"), dict) or not isinstance(
                     attempt.get("processing_pair_count"), int
-                ):
+                ) or isinstance(attempt.get("processing_pair_count"), bool) or attempt["processing_pair_count"] <= 0:
                     raise LedgerInvalid("existing verified attempt is incomplete")
             if attempt["status"] == "failed":
                 failure = attempt.get("failure")
@@ -392,6 +443,8 @@ class RunLedger:
                 "interaction_id": None,
                 "diagnostics": [],
                 "evidence_frames": [],
+                "measurements": {},
+                "gemini_usage": {},
             }
         )
         self._write()
@@ -407,6 +460,34 @@ class RunLedger:
         self._attempt(attempt_id)["diagnostics"].append(event_type)
         self._write()
 
+    def record_measurement(self, attempt_id: str, name: str, seconds: float) -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("measurement name must not be blank")
+        if isinstance(seconds, bool) or not isinstance(seconds, (int, float)) or not math.isfinite(seconds) or seconds < 0:
+            raise ValueError("measurement duration must be finite and non-negative")
+        attempt = self._attempt(attempt_id)
+        measurements = attempt.setdefault("measurements", {})
+        if not isinstance(measurements, dict):
+            raise LedgerInvalid("attempt has invalid measurements")
+        measurements[name] = seconds
+        self._write()
+
+    def record_gemini_usage(self, attempt_id: str, usage: dict[str, int]) -> None:
+        if not isinstance(usage, dict):
+            raise ValueError("Gemini usage must be a mapping")
+        if any(
+            not isinstance(key, str)
+            or not key.strip()
+            or not isinstance(value, int)
+            or isinstance(value, bool)
+            or value < 0
+            for key, value in usage.items()
+        ):
+            raise ValueError("Gemini usage must contain non-negative integer values")
+        attempt = self._attempt(attempt_id)
+        attempt["gemini_usage"] = dict(usage)
+        self._write()
+
     @property
     def attempts(self) -> tuple[dict[str, Any], ...]:
         return tuple(deepcopy(cast(list[dict[str, Any]], self._data["attempts"])))
@@ -416,6 +497,8 @@ class RunLedger:
         return cast(str, self._data["source_sha256"])
 
     def complete(self, attempt_id: str, analysis: dict[str, Any], *, processing_pair_count: int) -> None:
+        if not isinstance(processing_pair_count, int) or isinstance(processing_pair_count, bool) or processing_pair_count <= 0:
+            raise ValueError("processing pair count must be positive")
         attempt = self._attempt(attempt_id)
         attempt.update(
             status="verified",
@@ -906,23 +989,7 @@ class RunLedger:
         raise KeyError(f"unknown attempt: {attempt_id}")
 
     def _write(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary_name = tempfile.mkstemp(prefix="ledger-", suffix=".tmp", dir=self.path.parent)
-        temporary = Path(temporary_name)
-        try:
-            with os.fdopen(descriptor, "w") as handle:
-                json.dump(self._data, handle, indent=2, sort_keys=True)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
-            directory_descriptor = os.open(self.path.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory_descriptor)
-            finally:
-                os.close(directory_descriptor)
-        finally:
-            temporary.unlink(missing_ok=True)
+        atomic_write_json(self.path, self._data, prefix="ledger-")
 
 
 def _approval_data(value: Any) -> dict[str, Any]:

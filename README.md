@@ -34,7 +34,42 @@ The command FFprobes the input before creating a Gemini client. It then uploads 
 2. every `processing_call.id` to match exactly one observed `processing_result.call_id`, with no orphans;
 3. `output_text` to pass the v1 Pydantic schema.
 
-The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations. After policy persistence, actionable `candidate` and `manual_review` routes also receive a local Evidence Frame under `output/<source-sha256>/evidence-frames/<attempt-id>/<candidate-id>.png`.
+The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations. In the normal full triage pipeline, actionable `candidate` and `manual_review` routes also receive a local Evidence Frame under `output/<source-sha256>/evidence-frames/<attempt-id>/<candidate-id>.png`; the first two acceptance commands intentionally defer frame extraction until `run`.
+
+## Frozen acceptance cycle
+
+The canonical fixture has an opt-in, source-scoped acceptance record at `output/<source-sha256>/acceptance.json`. Run the exact consecutive sequence with the same output directory and frozen fixture:
+
+```bash
+mkdir -p output
+docker run --rm -it --user "$(id -u):$(id -g)" \
+  --env GEMINI_API_KEY \
+  --mount type=bind,src="$PWD/fixtures/canonical",dst=/input,readonly \
+  --mount type=bind,src="$PWD/fixtures/canonical",dst=/context,readonly \
+  --mount type=bind,src="$PWD/fixtures",dst=/app/fixtures,readonly \
+  --mount type=bind,src="$PWD/output",dst=/output \
+  client-feedback-triage analyze /app/fixtures/canonical/feedback-recording.mp4 --output /output
+docker run --rm -it --user "$(id -u):$(id -g)" \
+  --env GEMINI_API_KEY \
+  --mount type=bind,src="$PWD/fixtures/canonical",dst=/input,readonly \
+  --mount type=bind,src="$PWD/fixtures/canonical",dst=/context,readonly \
+  --mount type=bind,src="$PWD/fixtures",dst=/app/fixtures,readonly \
+  --mount type=bind,src="$PWD/output",dst=/output \
+  client-feedback-triage analyze /app/fixtures/canonical/feedback-recording.mp4 --output /output --reanalyze
+docker run --rm -it --user "$(id -u):$(id -g)" \
+  --env GEMINI_API_KEY --env GITHUB_TOKEN \
+  --mount type=bind,src="$PWD/fixtures/canonical",dst=/input,readonly \
+  --mount type=bind,src="$PWD/fixtures/canonical",dst=/context,readonly \
+  --mount type=bind,src="$PWD/fixtures",dst=/app/fixtures,readonly \
+  --mount type=bind,src="$PWD/manual-baseline.json",dst=/manual-baseline.json,readonly \
+  --mount type=bind,src="$PWD/output",dst=/output \
+  client-feedback-triage run /app/fixtures/canonical/feedback-recording.mp4 --output /output --reanalyze \
+  --repository owner/repository --manual-baseline /manual-baseline.json
+```
+
+The first two commands require fresh, completed, semantically passing analyses and do not extract Evidence Frames. The third command is the only step that extracts frames, asks for Approval, and can create Issues. A command-order change, nonqualifying attempt, or behavior fingerprint change resets the consecutive requirement. `run` first searches open and closed Issues for every exact final-source marker; it performs no cleanup mutation and stops if one is present. GitHub writes remain interactive and require `GITHUB_TOKEN`.
+
+The manual baseline is a measured JSON artifact for the same previously unseen recording. It must contain `source_sha256`, `recording_label`, `equivalent_issue_count`, matching positive `equivalent_issue_numbers` for the manually closed demo Issues, positive `watch_seconds`, `issue_writing_seconds`, and `active_human_seconds`, plus timezone-qualified `measured_at`. The canonical cycle expects three equivalent Issues. Before analysis, `run` reads those Issue numbers and refuses to continue unless every one is closed; it never closes or otherwise mutates them. Successful acceptance records upload, Gemini analysis/usage, Evidence Frame, active-review, write, wall-clock, and active-human measurements without extrapolating a manual baseline.
 
 ## Review and publish GitHub Issues
 

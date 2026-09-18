@@ -2,6 +2,7 @@
 
 ## [PLANS]
 
+- 2026-09-18T13:55:00Z [USER] Implement issue #17's frozen acceptance cycle: deterministic safety matrix, exact three-fresh-analysis gate, reset semantics, scoped measurements/manual baseline, final review, and commit.
 - 2026-09-18T00:00:00Z [USER] Implement GitHub issue #15 with TDD at the approval/write seams, run targeted checks and the full suite, review with `/code-review`, then commit on the current branch.
 - 2026-09-18T03:20:00Z [USER] Implement GitHub issue #16 with TDD at the public write/reconciliation seams, run targeted checks and the full suite, review with `/code-review`, then commit on the current branch.
 - 2026-09-17T18:08:54Z [USER] Implement GitHub issue #14 with TDD at the settled Evidence Frame seams, run targeted checks, final checks and `/code-review`, then commit on the current branch.
@@ -9,6 +10,7 @@
 
 ## [DECISIONS]
 
+- 2026-09-18T13:55:00Z [CODE] Keep the existing library `triage_recording` full pipeline for prior callers, but make the CLI acceptance protocol explicit: `analyze` records verified/scored analysis without Evidence Frames, and `run --reanalyze` is the only command that may advance the third-run gate into frames, review, Approval, and writes. Live writes remain opt-in through the configured destination/token.
 - 2026-09-18T00:00:00Z [CODE] Issue #15 uses explicit Approval snapshots and destination-scoped Issue Records around the existing atomic per-source Run Ledger; the exact `crework:v1` source/candidate marker is the only deduplication identity, and the stdlib GitHub adapter performs no automatic Issue-create retry.
 - 2026-09-18T02:58:23Z [CODE] Issue #15 keeps Approval snapshots and Issue Records frozen/deeply immutable, reloads the ledger after source-lock acquisition, and treats written-event/Issue-Record disagreement as a conflict rather than permission to recreate.
 - 2026-09-18T03:20:00Z [CODE] Issue #16 will bind approvals, declines, and write transitions to an exact baseline Candidate snapshot hash; changed `--reanalyze` results therefore require fresh destination-bound Approval even when rendered Issue prose is unchanged. Multiple exact marker matches remain blocked unless an explicit canonical selection is recorded under the source lock; selected Issues are verified and adopted without mutation or recreation.
@@ -29,6 +31,12 @@
 
 ## [PROGRESS]
 
+- 2026-09-18T17:10:00Z [CODE] The earlier pending-full-suite note is superseded: deterministic matrix coverage now includes recovery, adoption, explicit retries/overrides, conflict resolution, lock blocking, and corrupt-ledger fail-closed cases, with tuple assertions for terminal state and external-write counts.
+- 2026-09-18T17:00:00Z [CODE] Acceptance history proof now requires a nonblank persisted Gemini interaction ID in addition to verified analysis, processing pairs, usage, timing, and semantic-score evidence; acceptance test seeds record interaction IDs, and the exact CLI test drives real `analyze_recording`/stored-interaction retrieval with matched processing pairs and canonical analysis.
+- 2026-09-18T17:00:00Z [TOOL] Deterministic acceptance matrix expanded with malformed output, unmatched processing, policy failure, invalid Approval, and GitHub marker-read failure cases; focused acceptance/matrix/write/trust/recovery verification passed 70 tests, strict mypy passed across 33 files, and `git diff --check` passed.
+- 2026-09-18T16:29:39Z [CODE] Ticket #17 acceptance implementation now includes durable exact sequencing, canonical-only `run --reanalyze`, source-wide marker and closed-baseline preflight, current-fingerprint ledger backing, prior-attempt semantic-score revalidation, fresh Manual Review, Evidence Frame/measurement/Gemini-usage proof, and deterministic route/write failure coverage.
+- 2026-09-18T16:29:39Z [TOOL] Latest focused verification passed 42 acceptance/ledger/write tests, strict mypy across 33 files, and `git diff --check`; final full-suite verification and commit remain pending.
+- 2026-09-18T13:55:00Z [CODE] Issue #17 inspection found issues #10–#16 complete; missing seams are an acceptance state machine, fresh-attempt qualification/reset, runtime measurements/Gemini usage, a manual-baseline contract, and one deterministic safety matrix.
 - 2026-09-17T14:35:10Z [CODE] Implemented deterministic Observation validation, duplicate grouping, evidence normalization/frame selection, stable Candidate IDs, ordered routes, CLI/Run Ledger integration, and policy documentation for issue #12.
 - 2026-09-17T16:20:00Z [CODE] Implemented frozen canonical six-case recording assets, structured ground-truth manifest, independent scorer, expanded behavior fingerprints, prompt/context injection, CLI semantic status, and UID-safe fixture generation docs.
 - 2026-09-17T17:05:00Z [TOOL] Final issue #13 verification passed: 61-test full suite, strict mypy across 19 source files, `git diff --check`, and Docker build.
@@ -41,6 +49,8 @@
 
 ## [DISCOVERIES]
 
+- 2026-09-18T16:29:39Z [CODE] Acceptance history cannot be trusted from opaque attempt IDs alone: the third run now requires the current ledger fingerprint and recomputes the canonical semantic score from each prior persisted policy result before review/write.
+- 2026-09-18T16:29:39Z [CODE] Acceptance and Run Ledger JSON durability share one atomic writer that fsyncs both the temporary file and parent directory; diagnostic timing callbacks remain exception-safe so observability cannot replace trust or write outcomes.
 - 2026-09-17T14:42:25Z [TOOL] The first final-suite run exposed obsolete input-boundary tests that still expected timestamp semantics to be Pydantic failures; those cases now live at the policy seam so they classify as `policy_failed`.
 - 2026-09-17T17:05:00Z [TOOL] Fresh canonical run `output/live-v12/result.json` completed through Gemini/trust/policy with two processing pairs; the CLI reported `ready_for_review`, `score.passed=true`, matched A–F, actionable count 4, and no score errors.
 - 2026-09-17T18:08:54Z [TOOL] The existing environment's system pytest lacks project dependencies; `.venv/bin/pytest`, `.venv/bin/mypy`, and `.venv/bin/python` are the supported local verification commands without host installation.
@@ -57,6 +67,7 @@
 
 ## [OUTCOMES]
 
+- 2026-09-18T17:10:00Z [TOOL] Final ticket #17 verification passed: full pytest suite 155 tests, strict mypy across 33 files, focused acceptance/matrix/write/trust/recovery tests, and `git diff --check`. Final two-axis review found no hard standards violations and no remaining exact-sequence or interaction-proof gaps; only bounded duplication/data-clump judgement calls remain.
 - 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Implementation committed as `a561bb2`.
 - 2026-09-17T18:45:07Z [TOOL] Issue #14 implementation committed as `8a1adba`: public deterministic frame selection, strict extraction records, per-attempt ledger persistence, nonterminal FFmpeg handling, CLI output, tests, and README documentation are complete; both canonical required frames were visually inspected.
 - 2026-09-18T03:00:00Z [TOOL] Ticket #15 implementation was committed as `a262574`; final full suite passed 104 tests, strict mypy and `git diff --check` passed, and Docker build was attempted but unavailable because this WSL distro has no `docker` command.

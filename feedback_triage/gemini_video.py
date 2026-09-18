@@ -1,12 +1,13 @@
+import time
 from collections import Counter
 from collections.abc import Callable, Iterable
-from pathlib import Path
-import time
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Any, Protocol, cast
 
 from feedback_triage.models import AnalysisResult, VerifiedAnalysis
+from feedback_triage.timing import TimingCallback, report_timing
 
 
 MODEL = "gemini-3.5-flash-lite"
@@ -95,6 +96,27 @@ def _value(item: Any, name: str) -> Any:
     return item.get(name) if isinstance(item, dict) else getattr(item, name, None)
 
 
+def _usage(interaction: Any) -> dict[str, int] | None:
+    metadata = _value(interaction, "usage_metadata") or _value(interaction, "usage")
+    if metadata is None:
+        return None
+    usage: dict[str, int] = {}
+    for name in (
+        "prompt_token_count",
+        "candidates_token_count",
+        "total_token_count",
+        "cached_content_token_count",
+        "thoughts_token_count",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ):
+        value = _value(metadata, name)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            usage[name] = value
+    return usage or None
+
+
 def _retry_after(error: Exception) -> float | None:
     response = getattr(error, "response", None)
     headers = getattr(response, "headers", None) or getattr(error, "headers", None)
@@ -159,7 +181,7 @@ def verify_completed_interaction(interaction: Any) -> VerifiedAnalysis:
     if not isinstance(output_text, str):
         raise UntrustedInteraction("completed interaction has no text output")
     analysis = AnalysisResult.model_validate_json(output_text)
-    return VerifiedAnalysis(analysis=analysis, processing_pair_count=len(calls))
+    return VerifiedAnalysis(analysis=analysis, processing_pair_count=len(calls), gemini_usage=_usage(interaction))
 
 
 def retrieve_verified_interaction(
@@ -192,7 +214,9 @@ def run_stored_stream(
     upload_deadline_seconds: float = 300,
     prompt: str = PROMPT,
     project_context: str = "",
+    on_timing: TimingCallback | None = None,
 ) -> VerifiedAnalysis:
+    upload_started = time.monotonic()
     try:
         uploaded = client.files.upload(file=str(video))
         state = _value(_value(uploaded, "state"), "name")
@@ -206,58 +230,64 @@ def run_stored_stream(
             state = _value(_value(uploaded, "state"), "name")
     except Exception as error:
         raise UploadFailed(str(error)) from error
+    finally:
+        report_timing(on_timing, "upload_seconds", time.monotonic() - upload_started)
     if state != "ACTIVE":
         raise UploadFailed(f"uploaded file is not ACTIVE: {state}")
+    analysis_started = time.monotonic()
     try:
-        stream = client.interactions.create(
-            model=MODEL,
-            input=[
-                {
-                    "type": "video",
-                    "uri": _value(uploaded, "uri"),
-                    "mime_type": _value(uploaded, "mime_type"),
-                    "processing": "agentic",
+        try:
+            stream = client.interactions.create(
+                model=MODEL,
+                input=[
+                    {
+                        "type": "video",
+                        "uri": _value(uploaded, "uri"),
+                        "mime_type": _value(uploaded, "mime_type"),
+                        "processing": "agentic",
+                    },
+                    {"type": "text", "text": compose_prompt(prompt, project_context)},
+                ],
+                stream=True,
+                store=True,
+                response_format={
+                    "text": {
+                        "mime_type": "application/json",
+                        "schema": AnalysisResult.model_json_schema(),
+                    }
                 },
-                {"type": "text", "text": compose_prompt(prompt, project_context)},
-            ],
-            stream=True,
-            store=True,
-            response_format={
-                "text": {
-                    "mime_type": "application/json",
-                    "schema": AnalysisResult.model_json_schema(),
-                }
-            },
-        )
-    except Exception as error:
-        raise InteractionUnrecoverable(str(error)) from error
-    interaction_id: str | None = None
-    completed = False
-    for event in stream:
-        event_type = _value(event, "event_type") or _value(event, "type")
-        if event_type == "interaction.created":
-            interaction = _value(event, "interaction")
-            candidate = _value(interaction, "id") or _value(event, "interaction_id")
-            if not isinstance(candidate, str) or not candidate:
-                raise UntrustedInteraction("interaction.created has no interaction ID")
-            on_created(candidate)
-            interaction_id = candidate
-        else:
-            if interaction_id is None:
-                raise UntrustedInteraction("stream event arrived before interaction ID was persisted")
-            on_diagnostic(str(event_type))
-        if event_type == "error":
-            event_error = _value(event, "error")
-            code = _value(event_error, "code")
-            message = _value(event_error, "message")
-            raise UntrustedInteraction(f"stream error {code}: {message}")
-        if event_type == "interaction.completed":
-            completed = True
-    if interaction_id is None:
-        raise UntrustedInteraction("stream ended without an interaction ID")
-    if not completed:
-        raise InteractionTimeout("stream ended without interaction.completed")
-    return retrieve_verified_interaction(client, interaction_id)
+            )
+        except Exception as error:
+            raise InteractionUnrecoverable(str(error)) from error
+        interaction_id: str | None = None
+        completed = False
+        for event in stream:
+            event_type = _value(event, "event_type") or _value(event, "type")
+            if event_type == "interaction.created":
+                interaction = _value(event, "interaction")
+                candidate = _value(interaction, "id") or _value(event, "interaction_id")
+                if not isinstance(candidate, str) or not candidate:
+                    raise UntrustedInteraction("interaction.created has no interaction ID")
+                on_created(candidate)
+                interaction_id = candidate
+            else:
+                if interaction_id is None:
+                    raise UntrustedInteraction("stream event arrived before interaction ID was persisted")
+                on_diagnostic(str(event_type))
+            if event_type == "error":
+                event_error = _value(event, "error")
+                code = _value(event_error, "code")
+                message = _value(event_error, "message")
+                raise UntrustedInteraction(f"stream error {code}: {message}")
+            if event_type == "interaction.completed":
+                completed = True
+        if interaction_id is None:
+            raise UntrustedInteraction("stream ended without an interaction ID")
+        if not completed:
+            raise InteractionTimeout("stream ended without interaction.completed")
+        return retrieve_verified_interaction(client, interaction_id)
+    finally:
+        report_timing(on_timing, "analysis_seconds", time.monotonic() - analysis_started)
 
 
 def create_client() -> GeminiClient:

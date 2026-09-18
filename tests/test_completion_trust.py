@@ -29,8 +29,19 @@ VALID_OUTPUT = """{
 }"""
 
 
-def interaction(*, status: str = "completed", steps: Sequence[object] | None = None, output: str = VALID_OUTPUT) -> object:
-    return SimpleNamespace(status=status, steps=list(steps or []), output_text=output)
+def interaction(
+    *,
+    status: str = "completed",
+    steps: Sequence[object] | None = None,
+    output: str = VALID_OUTPUT,
+    usage_metadata: object | None = None,
+) -> object:
+    return SimpleNamespace(
+        status=status,
+        steps=list(steps or []),
+        output_text=output,
+        usage_metadata=usage_metadata,
+    )
 
 
 def test_only_retrieved_completed_interaction_is_trusted() -> None:
@@ -72,6 +83,31 @@ def test_schema_is_validated_after_completion_and_processing_proof() -> None:
 
     with pytest.raises(ValidationError):
         verify_completed_interaction(interaction(steps=steps, output='{"schema_version":"1.0"}'))
+
+
+def test_completed_interaction_preserves_nonnegative_usage_metadata() -> None:
+    steps = [
+        SimpleNamespace(type="processing_call", id="segment-1"),
+        SimpleNamespace(type="processing_result", call_id="segment-1"),
+    ]
+
+    result = verify_completed_interaction(
+        interaction(
+            steps=steps,
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=11,
+                candidates_token_count=7,
+                total_token_count=18,
+                thoughts_token_count=-1,
+            ),
+        )
+    )
+
+    assert result.gemini_usage == {
+        "prompt_token_count": 11,
+        "candidates_token_count": 7,
+        "total_token_count": 18,
+    }
 
 
 @pytest.mark.parametrize(

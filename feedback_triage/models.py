@@ -105,6 +105,15 @@ class AnalysisResult(StrictModel):
 class VerifiedAnalysis(StrictModel):
     analysis: AnalysisResult
     processing_pair_count: int = Field(gt=0)
+    gemini_usage: dict[str, int] | None = None
+
+    @model_validator(mode="after")
+    def validate_usage(self) -> Self:
+        if self.gemini_usage is not None and any(
+            not key.strip() or value < 0 for key, value in self.gemini_usage.items()
+        ):
+            raise ValueError("Gemini usage keys must be non-blank and values must be non-negative")
+        return self
 
 
 class RoutedResult(StrictModel):

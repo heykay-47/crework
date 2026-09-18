@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal, Protocol
@@ -22,6 +23,7 @@ from .models import (
     issue_payload_hash,
     routed_result_hash,
 )
+from .timing import report_timing
 
 
 class IssueGateway(Protocol):
@@ -92,12 +94,18 @@ def terminal_review_decision(
     *,
     prompt: Callable[[str], str] = input,
     emit: Callable[[str], None] = print,
+    evidence_frame_paths: Sequence[str] = (),
 ) -> ReviewDecision:
     """Ask for one explicit terminal decision without exposing immutable fields."""
 
     emit(f"\nCandidate {candidate.candidate_id}: {candidate.title}")
     emit(candidate.summary)
     if candidate.route == "manual_review":
+        if evidence_frame_paths:
+            for path in evidence_frame_paths:
+                emit(f"Evidence Frame: {path}")
+        else:
+            emit("Evidence Frame: unavailable; visual confirmation is still required.")
         choice = prompt("Manual Review: [c]onfirm, [e]dit prose, or [d]ecline? ").strip().lower()
         if choice in {"c", "confirm", "y", "yes"}:
             return ReviewDecision("approve")
@@ -170,109 +178,141 @@ class WriteCoordinator:
         retry_uncertain: bool = False,
         confirm_no_issue: bool = False,
         canonical_issue_selections: Mapping[str, int] | None = None,
+        on_timing: Callable[[str, float], None] | None = None,
+        require_fresh_review: bool = False,
     ) -> tuple[PublishOutcome, ...]:
         """Review only admitted routes, persist decisions, then write sequentially."""
 
-        with self.ledger.exclusive_lock():
-            persisted_candidates = self._policy_candidates(attempt_id, source_sha256)
-            retry_ids = self._reconcile_locked(
-                attempt_id=attempt_id,
-                retry_uncertain=retry_uncertain,
-                confirm_no_issue=confirm_no_issue,
-                canonical_issue_selections=canonical_issue_selections or {},
-            )
-            approvals: list[Approval] = []
-            reviewed_approvals: list[Approval] = []
-            outcomes: list[PublishOutcome] = []
-            for candidate in candidates:
-                persisted = persisted_candidates.get(candidate.candidate_id)
-                if persisted is None or persisted.model_dump(mode="json") != candidate.model_dump(mode="json"):
-                    raise ValueError("review input must match a Candidate in the persisted policy result")
-                if candidate.route == "candidate" and not candidate.approval_eligible:
-                    continue
-                if candidate.route not in {"candidate", "manual_review"}:
-                    continue
-                default_approval = build_approval(
-                    source_sha256,
-                    candidate,
-                    destination_repository,
-                    manual_review_confirmed=candidate.route == "manual_review",
-                    operator_label=operator_label,
+        active_human_seconds = 0.0
+        active_review_started: float | None = None
+        active_review_seconds: float | None = None
+        write_started: float | None = None
+        external_write_count = 0
+
+        def count_external_write() -> None:
+            nonlocal external_write_count
+            external_write_count += 1
+
+        try:
+            with self.ledger.exclusive_lock():
+                persisted_candidates = self._policy_candidates(attempt_id, source_sha256)
+                retry_ids = self._reconcile_locked(
+                    attempt_id=attempt_id,
+                    retry_uncertain=retry_uncertain,
+                    confirm_no_issue=confirm_no_issue,
+                    canonical_issue_selections=canonical_issue_selections or {},
                 )
-                prior_approval = self.ledger.latest_approval_for(
-                    candidate_id=default_approval.candidate_id,
-                    destination_repository=default_approval.destination_repository,
-                )
-                if (
-                    prior_approval is not None
-                    and prior_approval.candidate_snapshot_hash == default_approval.candidate_snapshot_hash
-                    and prior_approval.candidate_payload_hash == default_approval.candidate_payload_hash
-                ):
-                    reviewed_approvals.append(prior_approval)
-                    existing = self._record_for_identity(prior_approval)
+                approvals: list[Approval] = []
+                reviewed_approvals: list[Approval] = []
+                outcomes: list[PublishOutcome] = []
+                active_review_started = time.monotonic()
+                for candidate in candidates:
+                    persisted = persisted_candidates.get(candidate.candidate_id)
+                    if persisted is None or persisted.model_dump(mode="json") != candidate.model_dump(mode="json"):
+                        raise ValueError("review input must match a Candidate in the persisted policy result")
+                    if candidate.route == "candidate" and not candidate.approval_eligible:
+                        continue
+                    if candidate.route not in {"candidate", "manual_review"}:
+                        continue
+                    default_approval = build_approval(
+                        source_sha256,
+                        candidate,
+                        destination_repository,
+                        manual_review_confirmed=candidate.route == "manual_review",
+                        operator_label=operator_label,
+                    )
+                    prior_approval = self.ledger.latest_approval_for(
+                        candidate_id=default_approval.candidate_id,
+                        destination_repository=default_approval.destination_repository,
+                    )
+                    if (
+                        not require_fresh_review
+                        and prior_approval is not None
+                        and prior_approval.candidate_snapshot_hash == default_approval.candidate_snapshot_hash
+                        and prior_approval.candidate_payload_hash == default_approval.candidate_payload_hash
+                    ):
+                        reviewed_approvals.append(prior_approval)
+                        existing = self._record_for_identity(prior_approval)
+                        if existing is not None:
+                            outcomes.append(PublishOutcome(candidate.candidate_id, "skipped", existing))
+                        else:
+                            approvals.append(prior_approval)
+                        continue
+                    declined = self.ledger.has_decline(
+                        source_sha256=source_sha256,
+                        candidate_id=default_approval.candidate_id,
+                        destination_repository=default_approval.destination_repository,
+                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
+                        payload_hash=default_approval.payload_hash,
+                    )
+                    if declined and not reconsider and not require_fresh_review:
+                        continue
+                    if reconsider and declined:
+                        self.ledger.record_reconsideration(
+                            attempt_id,
+                            source_sha256=source_sha256,
+                            candidate_id=default_approval.candidate_id,
+                            destination_repository=default_approval.destination_repository,
+                            candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
+                            payload_hash=default_approval.payload_hash,
+                        )
+                    decision_started = time.monotonic()
+                    try:
+                        decision = decision_fn(candidate)
+                    finally:
+                        active_human_seconds += time.monotonic() - decision_started
+                    if decision.action not in {"approve", "decline"}:
+                        raise ValueError("review decision must be approve or decline")
+                    if decision.action == "decline":
+                        self.ledger.record_decline(
+                            attempt_id,
+                            source_sha256=source_sha256,
+                            candidate_id=default_approval.candidate_id,
+                            destination_repository=default_approval.destination_repository,
+                            candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
+                            payload_hash=default_approval.payload_hash,
+                        )
+                        continue
+                    approval = build_approval(
+                        source_sha256,
+                        candidate,
+                        destination_repository,
+                        changes=decision.changes or None,
+                        manual_review_confirmed=candidate.route == "manual_review",
+                        operator_label=operator_label,
+                    )
+                    self.ledger.record_approval(attempt_id, approval)
+                    reviewed_approvals.append(approval)
+                    existing = self._record_for_identity(approval)
                     if existing is not None:
                         outcomes.append(PublishOutcome(candidate.candidate_id, "skipped", existing))
                     else:
-                        approvals.append(prior_approval)
-                    continue
-                declined = self.ledger.has_decline(
-                    source_sha256=source_sha256,
-                    candidate_id=default_approval.candidate_id,
-                    destination_repository=default_approval.destination_repository,
-                    candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
-                    payload_hash=default_approval.payload_hash,
-                )
-                if declined and not reconsider:
-                    continue
-                if reconsider and declined:
-                    self.ledger.record_reconsideration(
-                        attempt_id,
-                        source_sha256=source_sha256,
-                        candidate_id=default_approval.candidate_id,
-                        destination_repository=default_approval.destination_repository,
-                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
-                        payload_hash=default_approval.payload_hash,
+                        approvals.append(approval)
+                self._validate_approvals(tuple(reviewed_approvals), attempt_id)
+                self._validate_approvals(tuple(approvals), attempt_id)
+                if active_review_started is not None:
+                    active_review_seconds = time.monotonic() - active_review_started
+                write_started = time.monotonic()
+                outcomes.extend(
+                    self._publish_locked(
+                        tuple(approvals),
+                        attempt_id=attempt_id,
+                        retry_failed=retry_failed,
+                        retry_ids=retry_ids,
+                        canonical_issue_selections=canonical_issue_selections or {},
+                        on_external_write=count_external_write,
                     )
-                decision = decision_fn(candidate)
-                if decision.action not in {"approve", "decline"}:
-                    raise ValueError("review decision must be approve or decline")
-                if decision.action == "decline":
-                    self.ledger.record_decline(
-                        attempt_id,
-                        source_sha256=source_sha256,
-                        candidate_id=default_approval.candidate_id,
-                        destination_repository=default_approval.destination_repository,
-                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
-                        payload_hash=default_approval.payload_hash,
-                    )
-                    continue
-                approval = build_approval(
-                    source_sha256,
-                    candidate,
-                    destination_repository,
-                    changes=decision.changes or None,
-                    manual_review_confirmed=candidate.route == "manual_review",
-                    operator_label=operator_label,
                 )
-                self.ledger.record_approval(attempt_id, approval)
-                reviewed_approvals.append(approval)
-                existing = self._record_for_identity(approval)
-                if existing is not None:
-                    outcomes.append(PublishOutcome(candidate.candidate_id, "skipped", existing))
-                else:
-                    approvals.append(approval)
-            self._validate_approvals(tuple(reviewed_approvals), attempt_id)
-            self._validate_approvals(tuple(approvals), attempt_id)
-            outcomes.extend(
-                self._publish_locked(
-                    tuple(approvals),
-                    attempt_id=attempt_id,
-                    retry_failed=retry_failed,
-                    retry_ids=retry_ids,
-                    canonical_issue_selections=canonical_issue_selections or {},
-                )
-            )
-            return tuple(outcomes)
+                return tuple(outcomes)
+        finally:
+            report_timing(on_timing, "active_human_seconds", active_human_seconds)
+            if active_review_seconds is None and active_review_started is not None:
+                active_review_seconds = time.monotonic() - active_review_started
+            if active_review_seconds is not None:
+                report_timing(on_timing, "active_review_seconds", active_review_seconds)
+            report_timing(on_timing, "external_write_count", float(external_write_count))
+            if write_started is not None:
+                report_timing(on_timing, "write_seconds", time.monotonic() - write_started)
 
     def _policy_candidates(self, attempt_id: str, source_sha256: str) -> dict[str, RoutedResult]:
         if self.ledger.source_sha256 != source_sha256:
@@ -341,6 +381,7 @@ class WriteCoordinator:
         retry_failed: bool,
         retry_ids: set[str],
         canonical_issue_selections: Mapping[str, int] | None = None,
+        on_external_write: Callable[[], None] | None = None,
     ) -> tuple[PublishOutcome, ...]:
         outcomes: list[PublishOutcome] = []
         selections = canonical_issue_selections or {}
@@ -469,6 +510,8 @@ class WriteCoordinator:
                 )
             write_id = self.ledger.record_write_pending(attempt_id, approval)
             try:
+                if on_external_write is not None:
+                    on_external_write()
                 remote = self.github.create_issue(approval.destination_repository, approval.payload)
             except GitHubApiError as error:
                 state = "write_failed" if error.definitive else "write_uncertain"
