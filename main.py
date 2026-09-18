@@ -44,6 +44,13 @@ def parser() -> argparse.ArgumentParser:
         action="store_true",
         help="record the human certification required with --retry-uncertain",
     )
+    publish.add_argument(
+        "--canonical-selection",
+        action="append",
+        default=[],
+        metavar="CANDIDATE_ID=ISSUE_NUMBER",
+        help="explicitly select the canonical Issue for a recorded marker conflict; repeat per Candidate",
+    )
     return command_parser
 
 
@@ -123,6 +130,7 @@ def publish_main(args: argparse.Namespace) -> int:
         if not isinstance(policy_data, dict):
             raise LedgerInvalid("publish requires a persisted policy result")
         policy = PolicyResult.model_validate(policy_data)
+        canonical_issue_selections = parse_canonical_issue_selections(args.canonical_selection)
         token = os.environ.get("GITHUB_TOKEN", "")
         github = GitHubIssueClient(token)
         outcomes = WriteCoordinator(ledger, github).review_and_publish(
@@ -139,6 +147,7 @@ def publish_main(args: argparse.Namespace) -> int:
             retry_failed=args.retry_failed,
             retry_uncertain=args.retry_uncertain,
             confirm_no_issue=args.confirm_no_issue,
+            canonical_issue_selections=canonical_issue_selections,
         )
     except ExternalWriteFailure as error:
         print(
@@ -148,7 +157,12 @@ def publish_main(args: argparse.Namespace) -> int:
                     "code": error.code,
                     "candidate_id": error.candidate_id,
                     "destination_repository": error.destination_repository,
+                    "candidate_snapshot_hash": error.candidate_snapshot_hash,
                     "payload_hash": error.payload_hash,
+                    "stage": error.stage,
+                    "remote_status": error.remote_status,
+                    "remote_error": error.remote_error,
+                    "next_action": error.next_action,
                     "detail": error.detail,
                 }
             )
@@ -180,6 +194,25 @@ def publish_main(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def parse_canonical_issue_selections(values: Sequence[str]) -> dict[str, int]:
+    selections: dict[str, int] = {}
+    for value in values:
+        candidate_id, separator, issue_number_text = value.partition("=")
+        if not separator or not candidate_id or not issue_number_text:
+            raise ValueError("canonical selections must use CANDIDATE_ID=ISSUE_NUMBER")
+        try:
+            issue_number = int(issue_number_text)
+        except ValueError as error:
+            raise ValueError(f"canonical Issue number is not an integer: {issue_number_text}") from error
+        if issue_number <= 0:
+            raise ValueError("canonical Issue number must be positive")
+        previous = selections.get(candidate_id)
+        if previous is not None and previous != issue_number:
+            raise ValueError(f"canonical Candidate selection is duplicated: {candidate_id}")
+        selections[candidate_id] = issue_number
+    return selections
 
 
 if __name__ == "__main__":

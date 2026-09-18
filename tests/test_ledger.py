@@ -4,8 +4,42 @@ from pathlib import Path
 
 import pytest
 
+from feedback_triage.approval import build_approval, marker_for
 from feedback_triage.ledger import RunLedger
-from feedback_triage.models import EvidenceFrameRecord
+from feedback_triage.models import EvidenceFrameRecord, RoutedResult
+
+
+def migration_candidate(keyframe_seconds: float | None) -> RoutedResult:
+    return RoutedResult.model_validate(
+        {
+            "route": "candidate",
+            "candidate_id": "cand_aaaaaaaaaaaaaaaa",
+            "topic_key": "cta",
+            "type": "change_request",
+            "intent": "explicit_change",
+            "title": "Change CTA",
+            "component": "hero",
+            "summary": "Change the CTA label.",
+            "requested_outcome": "Use Schedule a Call",
+            "acceptance_criteria": ["The CTA uses the requested label."],
+            "clarification_question": None,
+            "confidence": "high",
+            "evidence": [
+                {
+                    "start_seconds": 1.0,
+                    "end_seconds": 2.0,
+                    "keyframe_seconds": keyframe_seconds,
+                    "client_quote": "Schedule a Call",
+                    "visual_observation": None,
+                }
+            ],
+            "evidence_frame_seconds": 1.5,
+            "rationale": "Explicit request.",
+            "approval_eligible": True,
+            "visually_inferred": False,
+            "reason_code": None,
+        }
+    )
 
 
 def test_interaction_id_is_atomically_recorded_before_diagnostics(tmp_path: Path) -> None:
@@ -86,6 +120,125 @@ def test_existing_ledger_rejects_corrupt_attempt_shape(tmp_path: Path) -> None:
             fingerprint="b" * 64,
             fingerprint_inputs={"source": source},
         )
+
+
+def test_issue_15_write_ledger_without_snapshot_hashes_remains_readable(tmp_path: Path) -> None:
+    source = "a" * 64
+    ledger_dir = tmp_path / source
+    ledger_dir.mkdir()
+    (ledger_dir / "ledger.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "source_sha256": source,
+                "analysis_fingerprint": "b" * 64,
+                "fingerprint_inputs": {"source": source},
+                "attempts": [],
+                "approvals": [],
+                "declines": [],
+                "write_attempts": [
+                    {
+                        "write_id": "write-1",
+                        "attempt_id": "attempt-1",
+                        "state": "write_uncertain",
+                        "candidate_id": "cand_aaaaaaaaaaaaaaaa",
+                        "source_sha256": source,
+                        "destination_repository": "demo/feedback",
+                        "payload_hash": "c" * 64,
+                        "marker": (
+                            "<!-- crework:v1 source_sha256="
+                            f"{source} candidate_id=cand_aaaaaaaaaaaaaaaa -->"
+                        ),
+                        "recorded_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+                "issue_records": [],
+            }
+        )
+    )
+
+    loaded = RunLedger.load(ledger_dir / "ledger.json")
+
+    assert loaded.write_attempts[0]["candidate_snapshot_hash"] == "0" * 64
+
+
+def test_ambiguous_legacy_approval_identity_cannot_bind_a_write_event(tmp_path: Path) -> None:
+    source = "a" * 64
+    first = build_approval(
+        source,
+        migration_candidate(None),
+        "demo/feedback",
+        approved_at="2026-01-01T00:00:00+00:00",
+    ).model_dump(mode="json")
+    second = build_approval(
+        source,
+        migration_candidate(1.25),
+        "demo/feedback",
+        approved_at="2026-01-01T00:00:01+00:00",
+    ).model_dump(mode="json")
+    payload_hash = first["payload_hash"]
+    for approval in (first, second):
+        approval.pop("candidate_snapshot_hash")
+        approval.update({"attempt_id": "attempt-1", "state": "approved"})
+    ledger_dir = tmp_path / source
+    ledger_dir.mkdir()
+    (ledger_dir / "ledger.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "source_sha256": source,
+                "analysis_fingerprint": "b" * 64,
+                "fingerprint_inputs": {"source": source},
+                "attempts": [],
+                "approvals": [first, second],
+                "declines": [],
+                "write_attempts": [
+                    {
+                        "write_id": "write-1",
+                        "attempt_id": "attempt-1",
+                        "state": "write_uncertain",
+                        "candidate_id": first["candidate_id"],
+                        "source_sha256": source,
+                        "destination_repository": "demo/feedback",
+                        "payload_hash": payload_hash,
+                        "marker": marker_for(source, first["candidate_id"]),
+                        "recorded_at": "2026-01-01T00:00:00+00:00",
+                    }
+                ],
+                "issue_records": [],
+            }
+        )
+    )
+
+    loaded = RunLedger.load(ledger_dir / "ledger.json")
+
+    assert loaded.write_attempts[0]["candidate_snapshot_hash"] == "0" * 64
+
+
+def test_legacy_decline_sentinel_remains_a_conservative_skip(tmp_path: Path) -> None:
+    ledger = RunLedger.create(
+        tmp_path,
+        source_sha256="a" * 64,
+        fingerprint="b" * 64,
+        fingerprint_inputs={"source": "a" * 64},
+    )
+    attempt_id = ledger.start_attempt()
+    ledger.record_decline(
+        attempt_id,
+        source_sha256="a" * 64,
+        candidate_id="cand_aaaaaaaaaaaaaaaa",
+        destination_repository="demo/feedback",
+        candidate_snapshot_hash="0" * 64,
+        payload_hash="c" * 64,
+    )
+
+    assert ledger.has_decline(
+        source_sha256="a" * 64,
+        candidate_id="cand_aaaaaaaaaaaaaaaa",
+        destination_repository="demo/feedback",
+        candidate_snapshot_hash="d" * 64,
+        payload_hash="c" * 64,
+    )
 
 
 def verified_ledger(tmp_path: Path) -> tuple[RunLedger, str]:

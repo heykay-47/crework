@@ -79,6 +79,7 @@ def approved(ledger_value: RunLedger) -> Any:
 class FakeGitHub:
     matches: list[GitHubIssue] = field(default_factory=list)
     issues: dict[int, GitHubIssue] = field(default_factory=dict)
+    get_errors: dict[int, Exception] = field(default_factory=dict)
     create_results: list[GitHubIssue | Exception] = field(default_factory=list)
     find_calls: int = 0
     create_calls: int = 0
@@ -88,6 +89,9 @@ class FakeGitHub:
         return tuple(issue for issue in self.matches if issue.body.count(marker) == 1)
 
     def get_issue(self, destination_repository: str, issue_number: int) -> GitHubIssue:
+        error = self.get_errors.get(issue_number)
+        if error is not None:
+            raise error
         return self.issues[issue_number]
 
     def create_issue(self, destination_repository: str, payload: Any) -> GitHubIssue:
@@ -97,6 +101,11 @@ class FakeGitHub:
             raise result
         self.issues[result.number] = result
         return result
+
+
+class CrashBeforeCreate(FakeGitHub):
+    def create_issue(self, destination_repository: str, payload: Any) -> GitHubIssue:
+        raise KeyboardInterrupt("process crashed before the response was classified")
 
 
 def remote_issue(approval: Any, number: int = 7, state: str = "open") -> GitHubIssue:
@@ -136,6 +145,61 @@ def test_create_persists_pending_before_post_and_written_record_after_verificati
     assert ledger_value.issue_records[0].candidate_id == approval.candidate_id
 
 
+def test_crash_after_pending_before_post_response_stays_uncertain_on_rerun(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    approval = approved(ledger_value)
+
+    with pytest.raises(KeyboardInterrupt):
+        WriteCoordinator(ledger_value, CrashBeforeCreate()).publish(
+            [approval], attempt_id=attempt_id
+        )
+
+    assert ledger_value.write_attempts[-1]["state"] == "write_pending"
+    with pytest.raises(ExternalWriteFailure) as raised:
+        WriteCoordinator(ledger_value, FakeGitHub()).publish([approval], attempt_id=attempt_id)
+
+    assert raised.value.code == "external_write_uncertain"
+    assert ledger_value.write_attempts[-1]["state"] == "write_uncertain"
+
+
+def test_remote_issue_edits_are_tolerated_when_marker_and_identity_remain(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    approval = approved(ledger_value)
+    github = FakeGitHub(create_results=[remote_issue(approval, 8)])
+    coordinator = WriteCoordinator(ledger_value, github)
+
+    coordinator.publish([approval], attempt_id=attempt_id)
+    remote = github.issues[8]
+    github.issues[8] = GitHubIssue(
+        destination_repository=remote.destination_repository,
+        number=remote.number,
+        title="Human edited title",
+        body=remote.body + "\nHuman edited context.",
+        html_url=remote.html_url,
+        state=remote.state,
+    )
+
+    outcomes = coordinator.publish([approval], attempt_id=attempt_id)
+
+    assert outcomes[0].state == "skipped"
+    assert github.create_calls == 1
+
+
+def test_deleted_remote_issue_is_a_conflict_and_is_never_recreated(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    approval = approved(ledger_value)
+    github = FakeGitHub(create_results=[remote_issue(approval, 9)])
+    coordinator = WriteCoordinator(ledger_value, github)
+    coordinator.publish([approval], attempt_id=attempt_id)
+    github.get_errors[9] = GitHubApiError("Issue not found", status_code=404, definitive=True)
+
+    with pytest.raises(ExternalWriteFailure) as raised:
+        coordinator.publish([approval], attempt_id=attempt_id)
+
+    assert raised.value.code == "external_write_conflict"
+    assert github.create_calls == 1
+
+
 def test_verified_record_is_reused_on_rerun_without_new_search_or_post(tmp_path: Path) -> None:
     ledger_value, attempt_id = ledger(tmp_path)
     approval = approved(ledger_value)
@@ -166,9 +230,12 @@ def test_missing_issue_record_is_a_conflict_not_permission_to_recreate(tmp_path:
         WriteCoordinator(reloaded, github).publish([approval], attempt_id=attempt_id)
 
     assert raised.value.code == "external_write_conflict"
+    assert raised.value.candidate_snapshot_hash == approval.candidate_snapshot_hash
+    assert raised.value.next_action
     assert github.create_calls == 1
     saved_after = json.loads(reloaded.path.read_text())
     assert saved_after["reconciliation_errors"][-1]["code"] == "external_write_conflict"
+    assert saved_after["reconciliation_errors"][-1]["candidate_snapshot_hash"] == approval.candidate_snapshot_hash
 
 
 def test_multiple_exact_markers_block_the_batch(tmp_path: Path) -> None:
@@ -192,6 +259,74 @@ def test_multiple_exact_markers_block_the_batch(tmp_path: Path) -> None:
     assert raised.value.code == "external_write_conflict"
     assert github.create_calls == 0
     assert marker in github.matches[0].body
+
+
+def test_human_canonical_selection_resolves_a_recorded_marker_conflict(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    approval = approved(ledger_value)
+    first = remote_issue(approval, 21)
+    second = remote_issue(approval, 22)
+    github = FakeGitHub(matches=[first, second])
+    coordinator = WriteCoordinator(ledger_value, github)
+
+    with pytest.raises(ExternalWriteFailure) as raised:
+        coordinator.publish([approval], attempt_id=attempt_id)
+
+    assert raised.value.code == "external_write_conflict"
+    assert ledger_value.write_attempts[-1]["state"] == "external_write_conflict"
+
+    outcomes = coordinator.publish(
+        [approval],
+        attempt_id=attempt_id,
+        canonical_issue_selections={approval.candidate_id: 22},
+    )
+
+    assert outcomes[0].state == "skipped"
+    assert outcomes[0].issue_record.issue_number == 22
+    assert github.create_calls == 0
+    saved = json.loads(ledger_value.path.read_text())
+    resolution = saved["conflict_resolutions"][-1]
+    assert resolution["selected_issue_number"] == 22
+    assert resolution["observed_issue_numbers"] == [21, 22]
+    assert [event["state"] for event in saved["write_attempts"]][-1] == "written"
+
+
+def test_recorded_canonical_selection_is_reused_after_resolution_write_boundary(
+    tmp_path: Path,
+) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    approval = approved(ledger_value)
+    first = remote_issue(approval, 31)
+    second = remote_issue(approval, 32)
+    github = FakeGitHub(matches=[first, second])
+    coordinator = WriteCoordinator(ledger_value, github)
+
+    with pytest.raises(ExternalWriteFailure):
+        coordinator.publish([approval], attempt_id=attempt_id)
+
+    conflict = ledger_value.write_attempts[-1]
+    write_id = conflict["write_id"]
+    assert isinstance(write_id, str)
+    ledger_value.record_conflict_resolution(
+        attempt_id,
+        approval,
+        write_id=write_id,
+        observed_issue_numbers=(31, 32),
+        selected_issue_number=32,
+        selected_issue_url=second.html_url,
+        detail="human selection was durably recorded before the process stopped",
+    )
+
+    outcomes = coordinator.publish(
+        [approval],
+        attempt_id=attempt_id,
+        canonical_issue_selections={approval.candidate_id: 32},
+    )
+
+    assert outcomes[0].state == "skipped"
+    assert outcomes[0].issue_record.issue_number == 32
+    assert len(ledger_value._data["conflict_resolutions"]) == 1
+    assert github.create_calls == 0
 
 
 def test_review_only_prompts_admitted_routes_and_persists_manual_edit(tmp_path: Path) -> None:
@@ -259,7 +394,15 @@ def test_definitive_failure_is_not_retried_without_explicit_action(tmp_path: Pat
     with pytest.raises(ExternalWriteFailure) as raised:
         coordinator.publish([approval], attempt_id=attempt_id)
     assert raised.value.code == "external_write_failed"
+    assert raised.value.stage == "create"
+    assert raised.value.remote_status == 422
+    assert raised.value.candidate_snapshot_hash == approval.candidate_snapshot_hash
+    assert raised.value.next_action
     assert [event["state"] for event in ledger_value.write_attempts] == ["write_pending", "write_failed"]
+    failed_event = ledger_value.write_attempts[-1]
+    assert failed_event["stage"] == "create"
+    assert failed_event["remote_status"] == 422
+    assert failed_event["candidate_snapshot_hash"] == approval.candidate_snapshot_hash
 
     with pytest.raises(ExternalWriteFailure):
         coordinator.publish([approval], attempt_id=attempt_id)
@@ -327,6 +470,8 @@ def test_uncertain_zero_match_never_auto_retries_and_requires_override(tmp_path:
     )
     assert outcomes[0].state == "created"
     assert github.create_calls == 2
+    assert len(ledger_value._data["overrides"]) == 1
+    assert ledger_value._data["overrides"][0]["candidate_snapshot_hash"] == approval.candidate_snapshot_hash
 
     rerun = coordinator.publish([approval], attempt_id=attempt_id)
     assert rerun[0].state == "skipped"
@@ -387,6 +532,191 @@ def test_unchanged_persisted_approval_resumes_without_prompt(tmp_path: Path) -> 
 
     assert outcomes[0].state == "adopted"
     assert github.create_calls == 0
+
+
+def test_changed_destination_requires_fresh_approval_and_separate_issue_record(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    first_approval = build_approval(
+        "a" * 64,
+        candidate(),
+        "demo/feedback",
+        approved_at="2026-01-01T00:00:00+00:00",
+    )
+    second_approval = build_approval(
+        "a" * 64,
+        candidate(),
+        "demo/other",
+        approved_at="2026-01-01T00:00:01+00:00",
+    )
+    github = FakeGitHub(create_results=[remote_issue(first_approval, 24), remote_issue(second_approval, 25)])
+    decisions: list[str] = []
+
+    def approve_after_prompt(value: RoutedResult) -> ReviewDecision:
+        decisions.append(value.candidate_id)
+        return ReviewDecision("approve")
+
+    coordinator = WriteCoordinator(ledger_value, github)
+    coordinator.review_and_publish(
+        [candidate()],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=approve_after_prompt,
+    )
+    outcomes = coordinator.review_and_publish(
+        [candidate()],
+        source_sha256="a" * 64,
+        destination_repository="demo/other",
+        attempt_id=attempt_id,
+        decision_fn=approve_after_prompt,
+    )
+
+    assert decisions == [candidate().candidate_id, candidate().candidate_id]
+    assert outcomes[0].issue_record.destination_repository == "demo/other"
+    assert {record.destination_repository for record in ledger_value.issue_records} == {
+        "demo/feedback",
+        "demo/other",
+    }
+    assert github.create_calls == 2
+
+
+def test_changed_reanalysis_snapshot_requires_fresh_approval_before_skip(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    original = candidate()
+    initial_approval = build_approval(
+        "a" * 64,
+        original,
+        "demo/feedback",
+        approved_at="2026-01-01T00:00:00+00:00",
+    )
+    github = FakeGitHub(create_results=[remote_issue(initial_approval, 23)])
+    coordinator = WriteCoordinator(ledger_value, github)
+
+    coordinator.review_and_publish(
+        [original],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=lambda _: ReviewDecision("approve"),
+    )
+
+    changed_span = original.evidence[0].model_copy(update={"keyframe_seconds": 1.25})
+    changed = original.model_copy(update={"evidence": (changed_span,)})
+    ledger_value.record_policy_result(
+        attempt_id,
+        {"schema_version": "1.0", "results": [changed.model_dump(mode="json")]},
+    )
+    prompted: list[str] = []
+
+    def approve_after_prompt(value: RoutedResult) -> ReviewDecision:
+        prompted.append(value.candidate_id)
+        return ReviewDecision("approve")
+
+    outcomes = coordinator.review_and_publish(
+        [changed],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=approve_after_prompt,
+    )
+
+    assert prompted == [changed.candidate_id]
+    assert outcomes[0].state == "skipped"
+    assert outcomes[0].issue_record.issue_number == 23
+    assert len(ledger_value.approvals) == 2
+    assert github.create_calls == 1
+
+
+def test_changed_snapshot_uncertain_retry_records_old_override_before_new_approval_write(
+    tmp_path: Path,
+) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    original = candidate()
+    initial_approval = build_approval(
+        "a" * 64,
+        original,
+        "demo/feedback",
+        approved_at="2026-01-01T00:00:00+00:00",
+    )
+    github = FakeGitHub(create_results=[GitHubTransportError("response lost")])
+    coordinator = WriteCoordinator(ledger_value, github)
+
+    with pytest.raises(ExternalWriteFailure) as raised:
+        coordinator.review_and_publish(
+            [original],
+            source_sha256="a" * 64,
+            destination_repository="demo/feedback",
+            attempt_id=attempt_id,
+            decision_fn=lambda _: ReviewDecision("approve"),
+        )
+    assert raised.value.code == "external_write_uncertain"
+
+    changed_span = original.evidence[0].model_copy(update={"keyframe_seconds": 1.25})
+    changed = original.model_copy(update={"evidence": (changed_span,)})
+    ledger_value.record_policy_result(
+        attempt_id,
+        {"schema_version": "1.0", "results": [changed.model_dump(mode="json")]},
+    )
+    changed_approval = build_approval(
+        "a" * 64,
+        changed,
+        "demo/feedback",
+        approved_at="2026-01-01T00:00:01+00:00",
+    )
+    github.create_results.append(remote_issue(changed_approval, 26))
+
+    outcomes = coordinator.review_and_publish(
+        [changed],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=lambda _: ReviewDecision("approve"),
+        retry_uncertain=True,
+        confirm_no_issue=True,
+    )
+
+    assert outcomes[0].state == "created"
+    assert github.create_calls == 2
+    assert ledger_value._data["overrides"][0]["candidate_snapshot_hash"] == (
+        initial_approval.candidate_snapshot_hash
+    )
+
+
+def test_changed_reanalysis_snapshot_is_not_hidden_by_an_old_decline(tmp_path: Path) -> None:
+    ledger_value, attempt_id = ledger(tmp_path)
+    original = candidate()
+    coordinator = WriteCoordinator(ledger_value, FakeGitHub())
+    decisions: list[str] = []
+
+    def decline_after_prompt(value: RoutedResult) -> ReviewDecision:
+        decisions.append(value.candidate_id)
+        return ReviewDecision("decline")
+
+    coordinator.review_and_publish(
+        [original],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=decline_after_prompt,
+    )
+
+    changed_span = original.evidence[0].model_copy(update={"keyframe_seconds": 1.25})
+    changed = original.model_copy(update={"evidence": (changed_span,)})
+    ledger_value.record_policy_result(
+        attempt_id,
+        {"schema_version": "1.0", "results": [changed.model_dump(mode="json")]},
+    )
+
+    coordinator.review_and_publish(
+        [changed],
+        source_sha256="a" * 64,
+        destination_repository="demo/feedback",
+        attempt_id=attempt_id,
+        decision_fn=decline_after_prompt,
+    )
+
+    assert decisions == [original.candidate_id, changed.candidate_id]
+    assert len(ledger_value.declines) == 2
 
 
 def test_review_rejects_candidate_not_in_persisted_policy(tmp_path: Path) -> None:

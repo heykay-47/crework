@@ -3,6 +3,7 @@
 ## [PLANS]
 
 - 2026-09-18T00:00:00Z [USER] Implement GitHub issue #15 with TDD at the approval/write seams, run targeted checks and the full suite, review with `/code-review`, then commit on the current branch.
+- 2026-09-18T03:20:00Z [USER] Implement GitHub issue #16 with TDD at the public write/reconciliation seams, run targeted checks and the full suite, review with `/code-review`, then commit on the current branch.
 - 2026-09-17T18:08:54Z [USER] Implement GitHub issue #14 with TDD at the settled Evidence Frame seams, run targeted checks, final checks and `/code-review`, then commit on the current branch.
 - 2026-09-17T09:30:57Z [USER] Implement approved GitHub issues #10–#19 in dependency order; issue #10 is the first tracer bullet.
 
@@ -10,6 +11,8 @@
 
 - 2026-09-18T00:00:00Z [CODE] Issue #15 uses explicit Approval snapshots and destination-scoped Issue Records around the existing atomic per-source Run Ledger; the exact `crework:v1` source/candidate marker is the only deduplication identity, and the stdlib GitHub adapter performs no automatic Issue-create retry.
 - 2026-09-18T02:58:23Z [CODE] Issue #15 keeps Approval snapshots and Issue Records frozen/deeply immutable, reloads the ledger after source-lock acquisition, and treats written-event/Issue-Record disagreement as a conflict rather than permission to recreate.
+- 2026-09-18T03:20:00Z [CODE] Issue #16 will bind approvals, declines, and write transitions to an exact baseline Candidate snapshot hash; changed `--reanalyze` results therefore require fresh destination-bound Approval even when rendered Issue prose is unchanged. Multiple exact marker matches remain blocked unless an explicit canonical selection is recorded under the source lock; selected Issues are verified and adopted without mutation or recreation.
+- 2026-09-18T06:28:38Z [CODE] Legacy version-1 ledgers are upgraded in memory before validation: Approval hashes are derived from persisted snapshots, uniquely bindable decisions/events inherit that hash, and ambiguous legacy write/decline identities use an all-zero sentinel and fail closed.
 - 2026-09-17T17:39:14Z [USER] Future commits in `crework` use GitHub identity `heykay-47 <krithick008@proton.me>` via repository-local Git configuration.
 - 2026-09-17T14:35:10Z [CODE] Issue #12 keeps malformed shape/value failures at the verified-output boundary as `output_invalid`; deterministic cross-field, topic, duplicate-ID/group, and duration checks fail the whole analysis as `policy_failed`.
 - 2026-09-17T18:08:54Z [CODE] Issue #14 keeps Evidence Frame extraction outside Gemini and policy schemas: normalized-span timestamp selection is public and deterministic; strict frame records are persisted per Candidate under the verified attempt, and FFmpeg failures are nonterminal.
@@ -49,6 +52,8 @@
 - 2026-09-17T13:08:52Z [TOOL] A live owned synthetic Feedback Recording completed with two matched processing pairs and schema-valid output; earlier transient stream errors were recorded fail-closed.
 - 2026-09-17T13:08:52Z [TOOL] Final verification: Docker image built, host-UID container invalid-input run persisted `invalid_input`, 19 tests passed, and strict mypy passed.
 - 2026-09-18T02:58:23Z [TOOL] Post-review targeted verification passed: 35 coordinator/write/GitHub/ledger tests, strict mypy across `feedback_triage`, `main.py`, and `tests`, and `git diff --check`; the second spec review found no remaining ticket gaps, while a standards review's only hard finding was an ASCII-style en dash that was removed.
+- 2026-09-18T03:20:00Z [TOOL] Ticket #16 baseline targeted verification passed: 27 write/approval/GitHub tests and strict mypy across `feedback_triage`, `main.py`, and `tests`; implementation seams are `WriteCoordinator.publish`, `WriteCoordinator.review_and_publish`, locked Run Ledger persistence, and the stdlib GitHub adapter.
+- 2026-09-18T06:28:38Z [TOOL] Post-review hardening added canonical-resolution crash-boundary, remote edit/deletion, crash-before-response, ambiguous legacy identity, conservative legacy decline, and changed-snapshot uncertain-retry tests; targeted coordinator/ledger tests pass (36) with strict mypy and `git diff --check` clean. A second two-axis review found no spec defects; only duplicated failure-metadata plumbing and a possible identity data-clump remain as standards judgement calls.
 
 ## [OUTCOMES]
 

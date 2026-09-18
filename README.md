@@ -51,13 +51,13 @@ docker run --rm -it --user "$(id -u):$(id -g)" \
   --operator-label "demo review"
 ```
 
-Each Approval is an immutable snapshot of the source SHA-256, stable Candidate ID, destination, complete rendered payload, payload hash, reviewed Candidate prose baseline, approval timestamp, and optional operator label. The Issue body contains exactly one marker:
+Each Approval is an immutable snapshot of the source SHA-256, stable Candidate ID, destination, complete rendered payload, payload hash, exact baseline Candidate snapshot hash, reviewed Candidate prose baseline, approval timestamp, and optional operator label. The Issue body contains exactly one marker:
 
 ```text
 <!-- crework:v1 source_sha256=<64-lowercase-hex> candidate_id=<cand_...> -->
 ```
 
-The command holds a source-scoped lock, reconciles pending writes and existing Issue Records, searches open and closed Issues for the exact marker, persists `approved` and then `write_pending` before a POST, and submits approved Candidates sequentially. An existing exact marker is adopted without POST. A create response is accepted only after destination, Issue number, and marker verification; a destination-scoped Issue Record is persisted immediately. Issue creation is never automatically retried. Use `--retry-failed` only for a definitive rejection, or use both `--retry-uncertain --confirm-no-issue` after an explicit human certification. A lost response or zero-match reconciliation remains fail-closed.
+The command holds a source-scoped lock, reconciles pending writes and existing Issue Records before asking for new decisions, searches open and closed Issues for the exact marker, persists `approved` and then `write_pending` before a POST, and submits approved Candidates sequentially. An existing exact marker is adopted without POST. If multiple exact matches are found, publishing stops; provide one or more explicit `--canonical-selection CANDIDATE_ID=ISSUE_NUMBER` values on a later run to record the human canonical choice and adopt that verified Issue without mutation. A create response is accepted only after destination, Issue number, and marker verification; a destination-scoped Issue Record is persisted immediately. Issue creation is never automatically retried. Use `--retry-failed` only for a definitive rejection, or use both `--retry-uncertain --confirm-no-issue` after an explicit human certification. A lost response or zero-match reconciliation remains fail-closed. Changed `--reanalyze` snapshots and destinations require fresh Approval, while an existing verified Issue remains skip-only; no rerun updates, reopens, overwrites, or recreates it.
 
 ## Canonical semantic evaluation
 

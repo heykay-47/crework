@@ -17,6 +17,7 @@ from .models import (
     IssuePayload,
     RoutedResult,
     issue_payload_hash,
+    routed_result_hash,
 )
 
 SOURCE_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -150,6 +151,7 @@ def build_approval(
         candidate_id=reviewed_candidate.candidate_id,
         destination_repository=destination,
         candidate_snapshot=reviewed_candidate,
+        candidate_snapshot_hash=routed_result_hash(candidate),
         candidate_payload_hash=payload_hash(candidate_payload),
         payload=payload,
         payload_hash=payload_hash(payload),

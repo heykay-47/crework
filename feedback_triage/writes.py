@@ -13,7 +13,15 @@ from pydantic import ValidationError
 from .approval import EDITABLE_FIELDS, build_approval, marker_for, render_issue_payload
 from .github import GitHubApiError, GitHubIssue
 from .ledger import LedgerInvalid, RunLedger
-from .models import Approval, IssuePayload, IssueRecord, PolicyResult, RoutedResult, issue_payload_hash
+from .models import (
+    Approval,
+    IssuePayload,
+    IssueRecord,
+    PolicyResult,
+    RoutedResult,
+    issue_payload_hash,
+    routed_result_hash,
+)
 
 
 class IssueGateway(Protocol):
@@ -46,17 +54,37 @@ class ExternalWriteFailure(RuntimeError):
         *,
         candidate_id: str,
         destination_repository: str,
+        candidate_snapshot_hash: str | None = None,
         payload_hash: str,
         detail: str,
+        stage: str = "reconcile",
+        remote_status: int | None = None,
+        remote_error: str | None = None,
+        next_action: str | None = None,
     ) -> None:
         self.code = code
         self.candidate_id = candidate_id
         self.destination_repository = destination_repository
+        self.candidate_snapshot_hash = candidate_snapshot_hash
         self.payload_hash = payload_hash
         self.detail = detail
+        self.stage = stage
+        self.remote_status = remote_status
+        self.remote_error = remote_error
+        self.next_action = next_action or _default_next_action(code)
         super().__init__(
             f"{code}: Candidate {candidate_id} in {destination_repository}: {detail}"
         )
+
+
+def _default_next_action(
+    code: Literal["external_write_failed", "external_write_uncertain", "external_write_conflict"],
+) -> str:
+    if code == "external_write_failed":
+        return "Review the definitive rejection and explicitly retry with --retry-failed if appropriate."
+    if code == "external_write_uncertain":
+        return "Reconcile the exact marker; use --retry-uncertain --confirm-no-issue only after human certification."
+    return "Resolve the remote or ledger conflict explicitly; never recreate or mutate the recorded Issue."
 
 
 def terminal_review_decision(
@@ -106,15 +134,18 @@ class WriteCoordinator:
         retry_failed: bool = False,
         retry_uncertain: bool = False,
         confirm_no_issue: bool = False,
+        canonical_issue_selections: Mapping[str, int] | None = None,
     ) -> tuple[PublishOutcome, ...]:
         """Reconcile, persist approvals, and write sequentially under one lock."""
 
         with self.ledger.exclusive_lock():
-            self._validate_approvals(approvals, attempt_id)
             retry_ids = self._reconcile_locked(
+                attempt_id=attempt_id,
                 retry_uncertain=retry_uncertain,
                 confirm_no_issue=confirm_no_issue,
+                canonical_issue_selections=canonical_issue_selections or {},
             )
+            self._validate_approvals(approvals, attempt_id)
             for approval in approvals:
                 self.ledger.record_approval(attempt_id, approval)
             return self._publish_locked(
@@ -122,6 +153,7 @@ class WriteCoordinator:
                 attempt_id=attempt_id,
                 retry_failed=retry_failed,
                 retry_ids=retry_ids,
+                canonical_issue_selections=canonical_issue_selections or {},
             )
 
     def review_and_publish(
@@ -137,16 +169,20 @@ class WriteCoordinator:
         retry_failed: bool = False,
         retry_uncertain: bool = False,
         confirm_no_issue: bool = False,
+        canonical_issue_selections: Mapping[str, int] | None = None,
     ) -> tuple[PublishOutcome, ...]:
         """Review only admitted routes, persist decisions, then write sequentially."""
 
         with self.ledger.exclusive_lock():
             persisted_candidates = self._policy_candidates(attempt_id, source_sha256)
             retry_ids = self._reconcile_locked(
+                attempt_id=attempt_id,
                 retry_uncertain=retry_uncertain,
                 confirm_no_issue=confirm_no_issue,
+                canonical_issue_selections=canonical_issue_selections or {},
             )
             approvals: list[Approval] = []
+            reviewed_approvals: list[Approval] = []
             outcomes: list[PublishOutcome] = []
             for candidate in candidates:
                 persisted = persisted_candidates.get(candidate.candidate_id)
@@ -163,38 +199,38 @@ class WriteCoordinator:
                     manual_review_confirmed=candidate.route == "manual_review",
                     operator_label=operator_label,
                 )
-                existing = self._record_for_identity(default_approval)
-                if existing is not None:
-                    outcomes.append(PublishOutcome(candidate.candidate_id, "skipped", existing))
-                    continue
                 prior_approval = self.ledger.latest_approval_for(
                     candidate_id=default_approval.candidate_id,
                     destination_repository=default_approval.destination_repository,
                 )
                 if (
                     prior_approval is not None
+                    and prior_approval.candidate_snapshot_hash == default_approval.candidate_snapshot_hash
                     and prior_approval.candidate_payload_hash == default_approval.candidate_payload_hash
                 ):
-                    approvals.append(prior_approval)
+                    reviewed_approvals.append(prior_approval)
+                    existing = self._record_for_identity(prior_approval)
+                    if existing is not None:
+                        outcomes.append(PublishOutcome(candidate.candidate_id, "skipped", existing))
+                    else:
+                        approvals.append(prior_approval)
                     continue
-                if self.ledger.has_decline(
+                declined = self.ledger.has_decline(
                     source_sha256=source_sha256,
                     candidate_id=default_approval.candidate_id,
                     destination_repository=default_approval.destination_repository,
+                    candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
                     payload_hash=default_approval.payload_hash,
-                ) and not reconsider:
+                )
+                if declined and not reconsider:
                     continue
-                if reconsider and self.ledger.has_decline(
-                    source_sha256=source_sha256,
-                    candidate_id=default_approval.candidate_id,
-                    destination_repository=default_approval.destination_repository,
-                    payload_hash=default_approval.payload_hash,
-                ):
+                if reconsider and declined:
                     self.ledger.record_reconsideration(
                         attempt_id,
                         source_sha256=source_sha256,
                         candidate_id=default_approval.candidate_id,
                         destination_repository=default_approval.destination_repository,
+                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
                         payload_hash=default_approval.payload_hash,
                     )
                 decision = decision_fn(candidate)
@@ -206,6 +242,7 @@ class WriteCoordinator:
                         source_sha256=source_sha256,
                         candidate_id=default_approval.candidate_id,
                         destination_repository=default_approval.destination_repository,
+                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
                         payload_hash=default_approval.payload_hash,
                     )
                     continue
@@ -218,7 +255,13 @@ class WriteCoordinator:
                     operator_label=operator_label,
                 )
                 self.ledger.record_approval(attempt_id, approval)
-                approvals.append(approval)
+                reviewed_approvals.append(approval)
+                existing = self._record_for_identity(approval)
+                if existing is not None:
+                    outcomes.append(PublishOutcome(candidate.candidate_id, "skipped", existing))
+                else:
+                    approvals.append(approval)
+            self._validate_approvals(tuple(reviewed_approvals), attempt_id)
             self._validate_approvals(tuple(approvals), attempt_id)
             outcomes.extend(
                 self._publish_locked(
@@ -226,6 +269,7 @@ class WriteCoordinator:
                     attempt_id=attempt_id,
                     retry_failed=retry_failed,
                     retry_ids=retry_ids,
+                    canonical_issue_selections=canonical_issue_selections or {},
                 )
             )
             return tuple(outcomes)
@@ -260,6 +304,8 @@ class WriteCoordinator:
             candidate = persisted_candidates.get(approval.candidate_id)
             if candidate is None:
                 raise ValueError("Approval Candidate is not present in the persisted policy result")
+            if approval.candidate_snapshot_hash != routed_result_hash(candidate):
+                raise ValueError("Approval is stale because the Candidate snapshot changed")
             baseline_payload = render_issue_payload(candidate, self.ledger.source_sha256)
             if approval.candidate_payload_hash != issue_payload_hash(baseline_payload):
                 raise ValueError("Approval is stale because the reviewed Candidate prose changed")
@@ -294,8 +340,10 @@ class WriteCoordinator:
         attempt_id: str,
         retry_failed: bool,
         retry_ids: set[str],
+        canonical_issue_selections: Mapping[str, int] | None = None,
     ) -> tuple[PublishOutcome, ...]:
         outcomes: list[PublishOutcome] = []
+        selections = canonical_issue_selections or {}
         for approval in approvals:
             existing = self.ledger.issue_record_for(approval)
             if existing is not None:
@@ -314,18 +362,62 @@ class WriteCoordinator:
             matches = self._find_matches(approval, marker)
             if len(matches) > 1:
                 write_id = str(uuid4())
+                try:
+                    selected = self._selected_match(approval, matches, selections)
+                except ExternalWriteFailure as error:
+                    self.ledger.record_write_state(
+                        write_id,
+                        attempt_id,
+                        approval,
+                        "external_write_conflict",
+                        detail=error.detail,
+                        stage=error.stage,
+                        remote_status=error.remote_status,
+                        remote_error=error.remote_error,
+                        next_action=error.next_action,
+                    )
+                    raise
+                if selected is not None:
+                    try:
+                        record = self._adopt_selected_match(
+                            approval,
+                            selected,
+                            matches,
+                            attempt_id=attempt_id,
+                            write_id=write_id,
+                        )
+                    except ExternalWriteFailure as error:
+                        self.ledger.record_write_state(
+                            write_id,
+                            attempt_id,
+                            approval,
+                            "external_write_conflict",
+                            detail=error.detail,
+                            stage=error.stage,
+                            remote_status=error.remote_status,
+                            remote_error=error.remote_error,
+                            next_action=error.next_action,
+                        )
+                        raise
+                    outcomes.append(PublishOutcome(approval.candidate_id, "adopted", record))
+                    continue
+                failure = self._failure(
+                    "external_write_conflict",
+                    approval,
+                    self._matches_detail("found multiple exact marker matches", matches),
+                )
                 self.ledger.record_write_state(
                     write_id,
                     attempt_id,
                     approval,
                     "external_write_conflict",
-                    detail=self._matches_detail("found multiple exact marker matches", matches),
+                    detail=failure.detail,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
                 )
-                raise self._failure(
-                    "external_write_conflict",
-                    approval,
-                    self._matches_detail("found multiple exact marker matches", matches),
-                )
+                raise failure
             if len(matches) == 1:
                 try:
                     record = self._record_from_remote(approval, matches[0])
@@ -336,6 +428,10 @@ class WriteCoordinator:
                         approval,
                         "external_write_conflict",
                         detail=error.detail,
+                        stage=error.stage,
+                        remote_status=error.remote_status,
+                        remote_error=error.remote_error,
+                        next_action=error.next_action,
                     )
                     raise
                 self.ledger.record_write_state(
@@ -357,12 +453,6 @@ class WriteCoordinator:
                         approval,
                         "an earlier write remains unresolved; reconcile it before retrying",
                     )
-                self.ledger.record_override(
-                    attempt_id,
-                    approval,
-                    write_id=prior_write_id,
-                    detail="human certified no exact marker was found and explicitly authorized retry",
-                )
             elif prior is not None and prior.get("state") == "write_failed" and not retry_failed:
                 raise self._failure(
                     "external_write_failed",
@@ -382,46 +472,72 @@ class WriteCoordinator:
                 remote = self.github.create_issue(approval.destination_repository, approval.payload)
             except GitHubApiError as error:
                 state = "write_failed" if error.definitive else "write_uncertain"
+                code: Literal["external_write_failed", "external_write_uncertain"] = (
+                    "external_write_failed" if error.definitive else "external_write_uncertain"
+                )
+                failure = self._failure(
+                    code,
+                    approval,
+                    str(error),
+                    stage="create",
+                    remote_status=error.status_code,
+                    remote_error=str(error),
+                )
                 self.ledger.record_write_state(
                     write_id,
                     attempt_id,
                     approval,
                     state,
-                    detail=str(error),
+                    detail=failure.detail,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
                 )
-                code: Literal["external_write_failed", "external_write_uncertain"] = (
-                    "external_write_failed" if error.definitive else "external_write_uncertain"
-                )
-                raise self._failure(code, approval, str(error)) from error
+                raise failure from error
             except Exception as error:
+                failure = self._failure(
+                    "external_write_uncertain",
+                    approval,
+                    f"unclassified create error: {error}",
+                    stage="create",
+                    remote_error=str(error),
+                )
                 self.ledger.record_write_state(
                     write_id,
                     attempt_id,
                     approval,
                     "write_uncertain",
-                    detail=f"unclassified create error: {error}",
+                    detail=failure.detail,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
                 )
-                raise self._failure(
-                    "external_write_uncertain",
-                    approval,
-                    f"unclassified create error: {error}",
-                ) from error
+                raise failure from error
 
             try:
                 record = self._record_from_remote(approval, remote)
             except ExternalWriteFailure as error:
+                failure = self._failure(
+                    "external_write_uncertain",
+                    approval,
+                    f"create response could not be verified: {error.detail}",
+                    stage="verify",
+                    remote_error=error.detail,
+                )
                 self.ledger.record_write_state(
                     write_id,
                     attempt_id,
                     approval,
                     "write_uncertain",
-                    detail=error.detail,
+                    detail=failure.detail,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
                 )
-                raise self._failure(
-                    "external_write_uncertain",
-                    approval,
-                    f"create response could not be verified: {error.detail}",
-                ) from error
+                raise failure from error
             self.ledger.record_write_state(
                 write_id,
                 attempt_id,
@@ -432,7 +548,14 @@ class WriteCoordinator:
             outcomes.append(PublishOutcome(approval.candidate_id, "created", record))
         return tuple(outcomes)
 
-    def _reconcile_locked(self, *, retry_uncertain: bool, confirm_no_issue: bool) -> set[str]:
+    def _reconcile_locked(
+        self,
+        *,
+        attempt_id: str,
+        retry_uncertain: bool,
+        confirm_no_issue: bool,
+        canonical_issue_selections: Mapping[str, int],
+    ) -> set[str]:
         retry_ids: set[str] = set()
         for record in self.ledger.issue_records:
             try:
@@ -442,6 +565,9 @@ class WriteCoordinator:
                     record,
                     "external_write_conflict" if getattr(error, "status_code", None) == 404 else "external_write_uncertain",
                     f"could not verify recorded Issue: {error}",
+                    candidate_snapshot_hash=self.ledger.snapshot_hash_for_record(record),
+                    remote_status=getattr(error, "status_code", None),
+                    remote_error=str(error),
                 )
                 self.ledger.record_reconciliation_error(
                     source_sha256=record.source_sha256,
@@ -449,6 +575,11 @@ class WriteCoordinator:
                     destination_repository=record.destination_repository,
                     code=failure.code,
                     detail=failure.detail,
+                    candidate_snapshot_hash=failure.candidate_snapshot_hash,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
                 )
                 raise failure from error
             if (
@@ -466,6 +597,7 @@ class WriteCoordinator:
                     record,
                     "external_write_conflict",
                     "recorded Issue is missing, damaged, or has a mismatched marker",
+                    candidate_snapshot_hash=self.ledger.snapshot_hash_for_record(record),
                 )
                 self.ledger.record_reconciliation_error(
                     source_sha256=record.source_sha256,
@@ -473,6 +605,11 @@ class WriteCoordinator:
                     destination_repository=record.destination_repository,
                     code=failure.code,
                     detail=failure.detail,
+                    candidate_snapshot_hash=failure.candidate_snapshot_hash,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
                 )
                 raise failure
 
@@ -485,6 +622,7 @@ class WriteCoordinator:
                         "external_write_conflict",
                         candidate_id=str(event.get("candidate_id", "unknown")),
                         destination_repository=str(event.get("destination_repository", "unknown")),
+                        candidate_snapshot_hash=str(event.get("candidate_snapshot_hash", "unknown")),
                         payload_hash=str(event.get("payload_hash", "unknown")),
                         detail="written event has no matching Approval snapshot",
                     )
@@ -510,6 +648,9 @@ class WriteCoordinator:
                         destination_repository=approval.destination_repository,
                         code="external_write_conflict",
                         detail="written event and destination-scoped Issue Record disagree or the record is missing",
+                        candidate_snapshot_hash=approval.candidate_snapshot_hash,
+                        stage="reconcile",
+                        next_action="Resolve the ledger conflict explicitly; never recreate the recorded Issue.",
                     )
                     raise self._failure(
                         "external_write_conflict",
@@ -520,6 +661,49 @@ class WriteCoordinator:
             if state == "external_write_conflict":
                 approval = self._approval_for_event(event)
                 if approval is not None:
+                    write_id = event.get("write_id")
+                    if isinstance(write_id, str):
+                        resolution = self.ledger.conflict_resolution_for(write_id)
+                        explicit_selection = canonical_issue_selections.get(approval.candidate_id)
+                        resolution_matches = (
+                            resolution is not None
+                            and resolution.get("source_sha256") == approval.source_sha256
+                            and resolution.get("candidate_id") == approval.candidate_id
+                            and resolution.get("destination_repository") == approval.destination_repository
+                            and resolution.get("candidate_snapshot_hash") == approval.candidate_snapshot_hash
+                            and resolution.get("payload_hash") == approval.payload_hash
+                        )
+                        selected_number = explicit_selection
+                        if selected_number is None and resolution_matches and resolution is not None:
+                            selected_number = resolution.get("selected_issue_number")
+                        if selected_number is not None:
+                            matches = self._find_matches(
+                                approval,
+                                marker_for(approval.source_sha256, approval.candidate_id),
+                            )
+                            selected = self._selected_match(
+                                approval,
+                                matches,
+                                {approval.candidate_id: selected_number},
+                            )
+                            if selected is not None:
+                                prior_selected_number = (
+                                    resolution.get("selected_issue_number")
+                                    if resolution_matches and resolution is not None
+                                    else None
+                                )
+                                self._adopt_selected_match(
+                                    approval,
+                                    selected,
+                                    matches,
+                                    attempt_id=attempt_id,
+                                    write_id=write_id,
+                                    record_resolution=(
+                                        not resolution_matches
+                                        or explicit_selection != prior_selected_number
+                                    ),
+                                )
+                                continue
                     raise self._failure(
                         "external_write_conflict",
                         approval,
@@ -529,6 +713,7 @@ class WriteCoordinator:
                     "external_write_conflict",
                     candidate_id=str(event.get("candidate_id", "unknown")),
                     destination_repository=str(event.get("destination_repository", "unknown")),
+                    candidate_snapshot_hash=str(event.get("candidate_snapshot_hash", "unknown")),
                     payload_hash=str(event.get("payload_hash", "unknown")),
                     detail="a prior write conflict has no matching Approval snapshot",
                 )
@@ -540,6 +725,7 @@ class WriteCoordinator:
                     "external_write_conflict",
                     candidate_id=str(event.get("candidate_id", "unknown")),
                     destination_repository=str(event.get("destination_repository", "unknown")),
+                    candidate_snapshot_hash=str(event.get("candidate_snapshot_hash", "unknown")),
                     payload_hash=str(event.get("payload_hash", "unknown")),
                     detail="write event has no matching Approval snapshot",
                 )
@@ -567,6 +753,10 @@ class WriteCoordinator:
                     approval,
                     "write_uncertain",
                     detail=error.detail,
+                    stage=error.stage,
+                    remote_status=error.remote_status,
+                    remote_error=error.remote_error,
+                    next_action=error.next_action,
                 )
                 raise
             if len(matches) == 1:
@@ -579,6 +769,10 @@ class WriteCoordinator:
                         approval,
                         "external_write_conflict",
                         detail=error.detail,
+                        stage=error.stage,
+                        remote_status=error.remote_status,
+                        remote_error=error.remote_error,
+                        next_action=error.next_action,
                     )
                     raise
                 self.ledger.record_write_state(
@@ -591,48 +785,115 @@ class WriteCoordinator:
                 )
                 continue
             if len(matches) > 1:
-                self.ledger.record_write_state(
-                    write_id,
-                    str(event.get("attempt_id", "")),
-                    approval,
-                    "external_write_conflict",
-                    detail=self._matches_detail(
-                        "reconciliation found multiple exact marker matches", matches
-                    ),
-                )
-                raise self._failure(
+                try:
+                    selected = self._selected_match(approval, matches, canonical_issue_selections)
+                except ExternalWriteFailure as error:
+                    self.ledger.record_write_state(
+                        write_id,
+                        str(event.get("attempt_id", "")),
+                        approval,
+                        "external_write_conflict",
+                        detail=error.detail,
+                        stage=error.stage,
+                        remote_status=error.remote_status,
+                        remote_error=error.remote_error,
+                        next_action=error.next_action,
+                    )
+                    raise
+                if selected is not None:
+                    try:
+                        self._adopt_selected_match(
+                            approval,
+                            selected,
+                            matches,
+                            attempt_id=attempt_id,
+                            write_id=write_id,
+                        )
+                    except ExternalWriteFailure as error:
+                        self.ledger.record_write_state(
+                            write_id,
+                            str(event.get("attempt_id", "")),
+                            approval,
+                            "external_write_conflict",
+                            detail=error.detail,
+                            stage=error.stage,
+                            remote_status=error.remote_status,
+                            remote_error=error.remote_error,
+                            next_action=error.next_action,
+                        )
+                        raise
+                    continue
+                failure = self._failure(
                     "external_write_conflict",
                     approval,
                     self._matches_detail(
                         "reconciliation found multiple exact marker matches", matches
                     ),
                 )
+                self.ledger.record_write_state(
+                    write_id,
+                    str(event.get("attempt_id", "")),
+                    approval,
+                    "external_write_conflict",
+                    detail=failure.detail,
+                    stage=failure.stage,
+                    remote_status=failure.remote_status,
+                    remote_error=failure.remote_error,
+                    next_action=failure.next_action,
+                )
+                raise failure
             if retry_uncertain and confirm_no_issue:
+                self.ledger.record_override(
+                    attempt_id,
+                    approval,
+                    write_id=write_id,
+                    detail="human certified no exact marker was found and explicitly authorized retry",
+                )
                 retry_ids.add(write_id)
                 continue
+            failure = self._failure(
+                "external_write_uncertain",
+                approval,
+                "zero marker matches do not prove that creation did not occur",
+            )
             self.ledger.record_write_state(
                 write_id,
                 str(event.get("attempt_id", "")),
                 approval,
                 "write_uncertain",
-                detail="zero marker matches do not prove that creation did not occur",
+                detail=failure.detail,
+                stage=failure.stage,
+                remote_status=failure.remote_status,
+                remote_error=failure.remote_error,
+                next_action=failure.next_action,
             )
-            raise self._failure(
-                "external_write_uncertain",
-                approval,
-                "zero marker matches do not prove that creation did not occur",
-            )
+            raise failure
         return retry_ids
 
     def _find_matches(self, approval: Approval, marker: str) -> tuple[GitHubIssue, ...]:
         try:
             return self.github.find_marker(approval.destination_repository, marker)
         except Exception as error:
-            raise self._failure(
+            failure = self._failure(
                 "external_write_uncertain",
                 approval,
                 f"exact-marker search failed: {error}",
-            ) from error
+                stage="reconcile",
+                remote_error=str(error),
+            )
+            self.ledger.record_reconciliation_error(
+                source_sha256=approval.source_sha256,
+                candidate_id=approval.candidate_id,
+                destination_repository=approval.destination_repository,
+                code=failure.code,
+                detail=failure.detail,
+                candidate_snapshot_hash=failure.candidate_snapshot_hash,
+                stage=failure.stage,
+                remote_status=failure.remote_status,
+                remote_error=failure.remote_error,
+                next_action=failure.next_action,
+            )
+            raise failure from error
 
     @staticmethod
     def _matches_detail(prefix: str, matches: tuple[GitHubIssue, ...]) -> str:
@@ -640,6 +901,68 @@ class WriteCoordinator:
             f"{match.destination_repository}#{match.number} ({match.html_url})" for match in matches
         )
         return f"{prefix}: {identities}"
+
+    def _selected_match(
+        self,
+        approval: Approval,
+        matches: tuple[GitHubIssue, ...],
+        selections: Mapping[str, int],
+    ) -> GitHubIssue | None:
+        selected_number = selections.get(approval.candidate_id)
+        if selected_number is None:
+            return None
+        if isinstance(selected_number, bool) or not isinstance(selected_number, int) or selected_number <= 0:
+            raise self._failure(
+                "external_write_conflict",
+                approval,
+                "canonical Issue selection must be a positive Issue number",
+            )
+        selected = [match for match in matches if match.number == selected_number]
+        if len(selected) != 1:
+            raise self._failure(
+                "external_write_conflict",
+                approval,
+                self._matches_detail(
+                    f"canonical Issue selection #{selected_number} was not one of the exact marker matches",
+                    matches,
+                ),
+            )
+        return selected[0]
+
+    def _adopt_selected_match(
+        self,
+        approval: Approval,
+        selected: GitHubIssue,
+        matches: tuple[GitHubIssue, ...],
+        *,
+        attempt_id: str,
+        write_id: str,
+        record_resolution: bool = True,
+    ) -> IssueRecord:
+        record = self._record_from_remote(approval, selected)
+        detail = self._matches_detail(
+            f"human selected canonical Issue #{selected.number} without POST",
+            matches,
+        )
+        if record_resolution:
+            self.ledger.record_conflict_resolution(
+                attempt_id,
+                approval,
+                write_id=write_id,
+                observed_issue_numbers=tuple(match.number for match in matches),
+                selected_issue_number=selected.number,
+                selected_issue_url=selected.html_url,
+                detail=detail,
+            )
+        self.ledger.record_write_state(
+            write_id,
+            attempt_id,
+            approval,
+            "written",
+            detail=detail,
+            issue_record=record,
+        )
+        return record
 
     def _record_from_remote(self, approval: Approval, remote: GitHubIssue) -> IssueRecord:
         marker = marker_for(approval.source_sha256, approval.candidate_id)
@@ -650,16 +973,28 @@ class WriteCoordinator:
                 "external_write_conflict",
                 approval,
                 "GitHub returned an Issue from a different destination repository",
+                stage="verify",
             )
         if not isinstance(remote.number, int) or isinstance(remote.number, bool) or remote.number <= 0:
-            raise self._failure("external_write_conflict", approval, "GitHub returned an invalid Issue number")
+            raise self._failure(
+                "external_write_conflict",
+                approval,
+                "GitHub returned an invalid Issue number",
+                stage="verify",
+            )
         if not isinstance(remote.body, str) or not isinstance(remote.html_url, str):
-            raise self._failure("external_write_conflict", approval, "GitHub returned an invalid Issue payload")
+            raise self._failure(
+                "external_write_conflict",
+                approval,
+                "GitHub returned an invalid Issue payload",
+                stage="verify",
+            )
         if not self._has_single_marker(remote.body, marker):
             raise self._failure(
                 "external_write_conflict",
                 approval,
                 "GitHub returned an Issue without exactly one expected marker",
+                stage="verify",
             )
         try:
             return IssueRecord(
@@ -674,7 +1009,10 @@ class WriteCoordinator:
             )
         except ValidationError as error:
             raise self._failure(
-                "external_write_conflict", approval, "GitHub returned an invalid Issue record"
+                "external_write_conflict",
+                approval,
+                "GitHub returned an invalid Issue record",
+                stage="verify",
             ) from error
 
     @staticmethod
@@ -693,6 +1031,7 @@ class WriteCoordinator:
                 approval.source_sha256 == event.get("source_sha256")
                 and approval.candidate_id == event.get("candidate_id")
                 and approval.destination_repository == event.get("destination_repository")
+                and approval.candidate_snapshot_hash == event.get("candidate_snapshot_hash")
                 and approval.payload_hash == event.get("payload_hash")
             ):
                 return approval
@@ -705,6 +1044,7 @@ class WriteCoordinator:
             if event.get("source_sha256") == approval.source_sha256
             and event.get("candidate_id") == approval.candidate_id
             and event.get("destination_repository") == approval.destination_repository
+            and event.get("candidate_snapshot_hash") == approval.candidate_snapshot_hash
             and event.get("payload_hash") == approval.payload_hash
         ]
         return matches[-1] if matches else None
@@ -714,13 +1054,23 @@ class WriteCoordinator:
         code: Literal["external_write_failed", "external_write_uncertain", "external_write_conflict"],
         approval: Approval,
         detail: str,
+        *,
+        stage: str = "reconcile",
+        remote_status: int | None = None,
+        remote_error: str | None = None,
+        next_action: str | None = None,
     ) -> ExternalWriteFailure:
         return ExternalWriteFailure(
             code,
             candidate_id=approval.candidate_id,
             destination_repository=approval.destination_repository,
+            candidate_snapshot_hash=approval.candidate_snapshot_hash,
             payload_hash=approval.payload_hash,
             detail=detail,
+            stage=stage,
+            remote_status=remote_status,
+            remote_error=remote_error,
+            next_action=next_action,
         )
 
     @staticmethod
@@ -728,11 +1078,22 @@ class WriteCoordinator:
         record: IssueRecord,
         code: Literal["external_write_failed", "external_write_uncertain", "external_write_conflict"],
         detail: str,
+        *,
+        stage: str = "reconcile",
+        candidate_snapshot_hash: str | None = None,
+        remote_status: int | None = None,
+        remote_error: str | None = None,
+        next_action: str | None = None,
     ) -> ExternalWriteFailure:
         return ExternalWriteFailure(
             code,
             candidate_id=record.candidate_id,
             destination_repository=record.destination_repository,
+            candidate_snapshot_hash=candidate_snapshot_hash,
             payload_hash=record.payload_hash,
             detail=detail,
+            stage=stage,
+            remote_status=remote_status,
+            remote_error=remote_error,
+            next_action=next_action,
         )

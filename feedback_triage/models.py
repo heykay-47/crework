@@ -138,6 +138,13 @@ class RoutedResult(StrictModel):
         return self
 
 
+def routed_result_hash(result: RoutedResult) -> str:
+    """Return the canonical hash of one persisted policy result."""
+
+    encoded = json.dumps(result.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 class PolicyResult(StrictModel):
     schema_version: Literal["1.0"]
     results: list[RoutedResult]
@@ -177,6 +184,7 @@ class Approval(StrictModel):
     candidate_id: str = Field(pattern=CANDIDATE_ID_PATTERN)
     destination_repository: str = Field(pattern=r"^[a-z0-9_.-]+/[a-z0-9_.-]+$")
     candidate_snapshot: RoutedResult
+    candidate_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     candidate_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     payload: IssuePayload
     payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")

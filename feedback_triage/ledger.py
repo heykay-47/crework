@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tempfile
 from contextlib import contextmanager
 from copy import deepcopy
@@ -13,11 +14,7 @@ import fcntl
 from feedback_triage.approval import marker_for
 from pydantic import ValidationError
 
-from feedback_triage.models import Approval, EvidenceFrameRecord, IssueRecord
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
+from feedback_triage.models import Approval, EvidenceFrameRecord, IssueRecord, RoutedResult, routed_result_hash
 
 
 class LedgerFingerprintMismatch(ValueError):
@@ -33,6 +30,18 @@ class LedgerLocked(RuntimeError):
 
 
 WRITE_STATES = frozenset({"write_pending", "written", "write_failed", "write_uncertain", "external_write_conflict"})
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+LEGACY_SNAPSHOT_HASH = "0" * 64
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _require_hash(value: object, label: str) -> str:
+    if not isinstance(value, str) or not SHA256_PATTERN.fullmatch(value):
+        raise LedgerInvalid(f"{label} must be a lowercase SHA-256 hash")
+    return value
 
 
 class RunLedger:
@@ -57,6 +66,7 @@ class RunLedger:
                 raise LedgerInvalid("existing Run Ledger is not valid JSON") from error
             if not isinstance(data, dict):
                 raise LedgerInvalid("existing Run Ledger must be a JSON object")
+            cls._upgrade_legacy_snapshot_fields(data)
             cls._validate_existing(data, source_sha256)
             if data["analysis_fingerprint"] != fingerprint:
                 raise LedgerFingerprintMismatch("existing Run Ledger has a different analysis fingerprint")
@@ -75,6 +85,7 @@ class RunLedger:
                 "declines": [],
                 "write_attempts": [],
                 "issue_records": [],
+                "conflict_resolutions": [],
             },
         )
         ledger._write()
@@ -90,11 +101,79 @@ class RunLedger:
             raise LedgerInvalid("Run Ledger is not valid JSON") from error
         if not isinstance(data, dict):
             raise LedgerInvalid("Run Ledger must be a JSON object")
+        cls._upgrade_legacy_snapshot_fields(data)
         source_sha256 = data.get("source_sha256")
         if not isinstance(source_sha256, str):
             raise LedgerInvalid("Run Ledger has an invalid source identity")
         cls._validate_existing(data, source_sha256)
         return cls(path, data)
+
+    @staticmethod
+    def _upgrade_legacy_snapshot_fields(data: dict[str, Any]) -> None:
+        """Fill snapshot hashes introduced after the first write-ledger format.
+
+        Issue #15 persisted the complete reviewed Candidate in each Approval but
+        did not persist its hash on approvals, declines, or write events.  Those
+        records remain readable so reconciliation can either continue safely or
+        fail closed when the old ledger lacks enough evidence to bind a state.
+        """
+
+        def identity(value: dict[str, Any]) -> tuple[str, str, str, str] | None:
+            source_sha256 = value.get("source_sha256")
+            candidate_id = value.get("candidate_id")
+            destination_repository = value.get("destination_repository")
+            payload_hash = value.get("payload_hash")
+            if not isinstance(source_sha256, str):
+                return None
+            if not isinstance(candidate_id, str):
+                return None
+            if not isinstance(destination_repository, str):
+                return None
+            if not isinstance(payload_hash, str):
+                return None
+            return source_sha256, candidate_id, destination_repository, payload_hash
+
+        approvals = data.get("approvals")
+        snapshot_hashes: dict[tuple[str, str, str, str], set[str]] = {}
+
+        def snapshot_for(value: dict[str, Any]) -> str:
+            value_identity = identity(value)
+            if value_identity is None:
+                return LEGACY_SNAPSHOT_HASH
+            hashes = snapshot_hashes.get(value_identity, set())
+            return next(iter(hashes)) if len(hashes) == 1 else LEGACY_SNAPSHOT_HASH
+
+        if isinstance(approvals, list):
+            for value in approvals:
+                if not isinstance(value, dict):
+                    continue
+                snapshot_hash = value.get("candidate_snapshot_hash")
+                if snapshot_hash is None:
+                    try:
+                        snapshot = RoutedResult.model_validate(value.get("candidate_snapshot"))
+                    except (TypeError, ValidationError):
+                        continue
+                    snapshot_hash = routed_result_hash(snapshot)
+                    value["candidate_snapshot_hash"] = snapshot_hash
+                value_identity = identity(value)
+                if value_identity is not None and isinstance(snapshot_hash, str):
+                    snapshot_hashes.setdefault(value_identity, set()).add(snapshot_hash)
+
+        for key in ("declines", "reconsiderations", "overrides"):
+            values = data.get(key)
+            if not isinstance(values, list):
+                continue
+            for value in values:
+                if not isinstance(value, dict) or "candidate_snapshot_hash" in value:
+                    continue
+                value["candidate_snapshot_hash"] = snapshot_for(value)
+
+        write_attempts = data.get("write_attempts")
+        if isinstance(write_attempts, list):
+            for value in write_attempts:
+                if not isinstance(value, dict) or "candidate_snapshot_hash" in value:
+                    continue
+                value["candidate_snapshot_hash"] = snapshot_for(value)
 
     @staticmethod
     def _validate_existing(data: dict[str, Any], source_sha256: str) -> None:
@@ -145,7 +224,16 @@ class RunLedger:
                         EvidenceFrameRecord.model_validate(frame)
                 except (TypeError, ValidationError) as error:
                     raise LedgerInvalid("existing attempt has invalid Evidence Frames") from error
-        for key in ("approvals", "declines", "reconsiderations", "write_attempts", "issue_records", "overrides", "reconciliation_errors"):
+        for key in (
+            "approvals",
+            "declines",
+            "reconsiderations",
+            "write_attempts",
+            "issue_records",
+            "overrides",
+            "reconciliation_errors",
+            "conflict_resolutions",
+        ):
             if key in data and not isinstance(data[key], list):
                 raise LedgerInvalid(f"existing Run Ledger {key} must be a list")
         for approval in data.get("approvals", []):
@@ -159,6 +247,50 @@ class RunLedger:
                 Approval.model_validate(_approval_data(approval))
             except (TypeError, ValidationError) as error:
                 raise LedgerInvalid("existing Run Ledger contains an invalid Approval") from error
+        for key in ("declines", "reconsiderations"):
+            for decision in data.get(key, []):
+                if not isinstance(decision, dict):
+                    raise LedgerInvalid(f"existing Run Ledger contains an invalid {key[:-1]}")
+                decision_required = (
+                    "attempt_id",
+                    "source_sha256",
+                    "candidate_id",
+                    "destination_repository",
+                    "candidate_snapshot_hash",
+                    "payload_hash",
+                    "recorded_at",
+                )
+                if not all(isinstance(decision.get(field), str) for field in decision_required):
+                    raise LedgerInvalid(f"existing Run Ledger contains an invalid {key[:-1]}")
+                if decision["source_sha256"] != source_sha256:
+                    raise LedgerInvalid(f"existing Run Ledger contains a mismatched {key[:-1]} source")
+                try:
+                    _require_hash(decision["candidate_snapshot_hash"], "Candidate snapshot hash")
+                    _require_hash(decision["payload_hash"], "payload hash")
+                    marker_for(decision["source_sha256"], decision["candidate_id"])
+                except (TypeError, ValueError, LedgerInvalid) as error:
+                    raise LedgerInvalid(f"existing Run Ledger contains an invalid {key[:-1]}") from error
+        for override in data.get("overrides", []):
+            if not isinstance(override, dict):
+                raise LedgerInvalid("existing Run Ledger contains an invalid override")
+            override_required = (
+                "attempt_id",
+                "write_id",
+                "candidate_id",
+                "destination_repository",
+                "candidate_snapshot_hash",
+                "payload_hash",
+                "detail",
+                "recorded_at",
+            )
+            if not all(isinstance(override.get(field), str) for field in override_required):
+                raise LedgerInvalid("existing Run Ledger contains an invalid override")
+            try:
+                _require_hash(override["candidate_snapshot_hash"], "Candidate snapshot hash")
+                _require_hash(override["payload_hash"], "payload hash")
+                marker_for(source_sha256, override["candidate_id"])
+            except (TypeError, ValueError, LedgerInvalid) as error:
+                raise LedgerInvalid("existing Run Ledger contains an invalid override") from error
         for record in data.get("issue_records", []):
             try:
                 IssueRecord.model_validate(record)
@@ -167,9 +299,22 @@ class RunLedger:
         for event in data.get("write_attempts", []):
             if not isinstance(event, dict):
                 raise LedgerInvalid("existing Run Ledger contains an invalid write event")
-            required = ("write_id", "attempt_id", "state", "candidate_id", "source_sha256", "destination_repository", "payload_hash", "marker", "recorded_at")
+            required = (
+                "write_id",
+                "attempt_id",
+                "state",
+                "candidate_id",
+                "source_sha256",
+                "destination_repository",
+                "candidate_snapshot_hash",
+                "payload_hash",
+                "marker",
+                "recorded_at",
+            )
             if not all(isinstance(event.get(key), str) for key in required):
                 raise LedgerInvalid("existing Run Ledger contains an invalid write event")
+            if not SHA256_PATTERN.fullmatch(event["candidate_snapshot_hash"]):
+                raise LedgerInvalid("existing Run Ledger contains an invalid Candidate snapshot hash")
             state = event["state"]
             if state not in WRITE_STATES:
                 raise LedgerInvalid("existing Run Ledger contains an invalid write state")
@@ -179,6 +324,15 @@ class RunLedger:
                 raise LedgerInvalid("existing Run Ledger contains an invalid write identity") from error
             if event["marker"] != expected_marker:
                 raise LedgerInvalid("existing Run Ledger contains a mismatched write marker")
+            if "stage" in event and not isinstance(event["stage"], str):
+                raise LedgerInvalid("existing Run Ledger contains an invalid write stage")
+            if "remote_status" in event and (
+                not isinstance(event["remote_status"], int) or isinstance(event["remote_status"], bool)
+            ):
+                raise LedgerInvalid("existing Run Ledger contains an invalid remote status")
+            for field in ("remote_error", "next_action"):
+                if field in event and not isinstance(event[field], str):
+                    raise LedgerInvalid(f"existing Run Ledger contains an invalid {field}")
             if "issue_record" in event:
                 try:
                     IssueRecord.model_validate(event["issue_record"])
@@ -186,6 +340,47 @@ class RunLedger:
                     raise LedgerInvalid("existing Run Ledger contains an invalid write Issue Record") from error
             if state == "written" and "issue_record" not in event:
                 raise LedgerInvalid("existing written event has no Issue Record")
+        for resolution in data.get("conflict_resolutions", []):
+            if not isinstance(resolution, dict):
+                raise LedgerInvalid("existing Run Ledger contains an invalid conflict resolution")
+            resolution_required = (
+                "write_id",
+                "attempt_id",
+                "source_sha256",
+                "candidate_id",
+                "destination_repository",
+                "candidate_snapshot_hash",
+                "payload_hash",
+                "observed_issue_numbers",
+                "selected_issue_number",
+                "selected_issue_url",
+                "detail",
+                "recorded_at",
+            )
+            if not all(key in resolution for key in resolution_required):
+                raise LedgerInvalid("existing Run Ledger contains an incomplete conflict resolution")
+            if not all(
+                isinstance(resolution.get(key), str)
+                for key in resolution_required
+                if key not in {"observed_issue_numbers", "selected_issue_number"}
+            ):
+                raise LedgerInvalid("existing Run Ledger contains an invalid conflict resolution identity")
+            if not SHA256_PATTERN.fullmatch(resolution["candidate_snapshot_hash"]):
+                raise LedgerInvalid("existing Run Ledger contains an invalid conflict resolution hash")
+            numbers = resolution["observed_issue_numbers"]
+            if not isinstance(numbers, list) or not all(
+                isinstance(number, int) and not isinstance(number, bool) and number > 0 for number in numbers
+            ):
+                raise LedgerInvalid("existing Run Ledger contains invalid conflict match numbers")
+            selected = resolution["selected_issue_number"]
+            if not isinstance(selected, int) or isinstance(selected, bool) or selected <= 0:
+                raise LedgerInvalid("existing Run Ledger contains an invalid selected Issue number")
+            if selected not in numbers:
+                raise LedgerInvalid("existing Run Ledger selected Issue is not an observed match")
+            if not isinstance(resolution["selected_issue_url"], str) or not resolution["selected_issue_url"].strip():
+                raise LedgerInvalid("existing Run Ledger contains an invalid selected Issue URL")
+            if not isinstance(resolution["detail"], str) or not resolution["detail"].strip():
+                raise LedgerInvalid("existing Run Ledger contains invalid conflict resolution detail")
 
     def start_attempt(self) -> str:
         attempt_id = str(uuid4())
@@ -366,11 +561,16 @@ class RunLedger:
         source_sha256: str,
         candidate_id: str,
         destination_repository: str,
+        candidate_snapshot_hash: str,
         payload_hash: str,
         recorded_at: str | None = None,
         reason: str = "declined",
     ) -> None:
         self._attempt(attempt_id)
+        if source_sha256 != self.source_sha256:
+            raise LedgerInvalid("decline source identity does not match the Run Ledger")
+        _require_hash(candidate_snapshot_hash, "Candidate snapshot hash")
+        _require_hash(payload_hash, "payload hash")
         declines = self._data.setdefault("declines", [])
         if not isinstance(declines, list):
             raise LedgerInvalid("Run Ledger declines must be a list")
@@ -380,6 +580,7 @@ class RunLedger:
                 "source_sha256": source_sha256,
                 "candidate_id": candidate_id,
                 "destination_repository": destination_repository,
+                "candidate_snapshot_hash": candidate_snapshot_hash,
                 "payload_hash": payload_hash,
                 "reason": reason,
                 "recorded_at": recorded_at or _now(),
@@ -393,6 +594,7 @@ class RunLedger:
         source_sha256: str,
         candidate_id: str,
         destination_repository: str,
+        candidate_snapshot_hash: str,
         payload_hash: str,
     ) -> bool:
         return any(
@@ -400,6 +602,10 @@ class RunLedger:
             and value.get("candidate_id") == candidate_id
             and value.get("destination_repository") == destination_repository
             and value.get("payload_hash") == payload_hash
+            and (
+                value.get("candidate_snapshot_hash") == candidate_snapshot_hash
+                or value.get("candidate_snapshot_hash") == LEGACY_SNAPSHOT_HASH
+            )
             for value in self.declines
         )
 
@@ -410,10 +616,15 @@ class RunLedger:
         source_sha256: str,
         candidate_id: str,
         destination_repository: str,
+        candidate_snapshot_hash: str,
         payload_hash: str,
         recorded_at: str | None = None,
     ) -> None:
         self._attempt(attempt_id)
+        if source_sha256 != self.source_sha256:
+            raise LedgerInvalid("reconsideration source identity does not match the Run Ledger")
+        _require_hash(candidate_snapshot_hash, "Candidate snapshot hash")
+        _require_hash(payload_hash, "payload hash")
         reconsiderations = self._data.setdefault("reconsiderations", [])
         if not isinstance(reconsiderations, list):
             raise LedgerInvalid("Run Ledger reconsiderations must be a list")
@@ -423,6 +634,7 @@ class RunLedger:
                 "source_sha256": source_sha256,
                 "candidate_id": candidate_id,
                 "destination_repository": destination_repository,
+                "candidate_snapshot_hash": candidate_snapshot_hash,
                 "payload_hash": payload_hash,
                 "recorded_at": recorded_at or _now(),
             }
@@ -449,6 +661,10 @@ class RunLedger:
         *,
         detail: str | None = None,
         issue_record: IssueRecord | None = None,
+        stage: str | None = None,
+        remote_status: int | None = None,
+        remote_error: str | None = None,
+        next_action: str | None = None,
     ) -> None:
         if state not in {"written", "write_failed", "write_uncertain", "external_write_conflict"}:
             raise ValueError(f"invalid terminal write state: {state}")
@@ -457,7 +673,18 @@ class RunLedger:
             raise ValueError("written state requires an Issue Record")
         if issue_record is not None:
             self._record_issue_record(issue_record)
-        self._append_write_state(write_id, attempt_id, approval, state, detail=detail, issue_record=issue_record)
+        self._append_write_state(
+            write_id,
+            attempt_id,
+            approval,
+            state,
+            detail=detail,
+            issue_record=issue_record,
+            stage=stage,
+            remote_status=remote_status,
+            remote_error=remote_error,
+            next_action=next_action,
+        )
 
     def record_override(
         self,
@@ -468,6 +695,8 @@ class RunLedger:
         detail: str,
     ) -> None:
         self._attempt(attempt_id)
+        if approval.source_sha256 != self.source_sha256:
+            raise LedgerInvalid("override source identity does not match the Run Ledger")
         overrides = self._data.setdefault("overrides", [])
         if not isinstance(overrides, list):
             raise LedgerInvalid("Run Ledger overrides must be a list")
@@ -477,12 +706,64 @@ class RunLedger:
                 "write_id": write_id,
                 "candidate_id": approval.candidate_id,
                 "destination_repository": approval.destination_repository,
+                "candidate_snapshot_hash": approval.candidate_snapshot_hash,
                 "payload_hash": approval.payload_hash,
                 "detail": detail,
                 "recorded_at": _now(),
             }
         )
         self._write()
+
+    def record_conflict_resolution(
+        self,
+        attempt_id: str,
+        approval: Approval,
+        *,
+        write_id: str,
+        observed_issue_numbers: tuple[int, ...],
+        selected_issue_number: int,
+        selected_issue_url: str,
+        detail: str,
+    ) -> None:
+        self._attempt(attempt_id)
+        if approval.source_sha256 != self.source_sha256:
+            raise LedgerInvalid("conflict resolution source identity does not match the Run Ledger")
+        if not observed_issue_numbers or any(
+            isinstance(number, bool) or not isinstance(number, int) or number <= 0
+            for number in observed_issue_numbers
+        ):
+            raise LedgerInvalid("conflict resolution requires positive observed Issue numbers")
+        if selected_issue_number not in observed_issue_numbers:
+            raise LedgerInvalid("selected Issue must be one of the observed marker matches")
+        if not selected_issue_url.strip() or not detail.strip():
+            raise LedgerInvalid("conflict resolution URL and detail must not be blank")
+        resolutions = self._data.setdefault("conflict_resolutions", [])
+        if not isinstance(resolutions, list):
+            raise LedgerInvalid("Run Ledger conflict resolutions must be a list")
+        resolutions.append(
+            {
+                "write_id": write_id,
+                "attempt_id": attempt_id,
+                "source_sha256": approval.source_sha256,
+                "candidate_id": approval.candidate_id,
+                "destination_repository": approval.destination_repository,
+                "candidate_snapshot_hash": approval.candidate_snapshot_hash,
+                "payload_hash": approval.payload_hash,
+                "observed_issue_numbers": list(observed_issue_numbers),
+                "selected_issue_number": selected_issue_number,
+                "selected_issue_url": selected_issue_url,
+                "detail": detail,
+                "recorded_at": _now(),
+            }
+        )
+        self._write()
+
+    def conflict_resolution_for(self, write_id: str) -> dict[str, Any] | None:
+        values = self._data.get("conflict_resolutions", [])
+        if not isinstance(values, list):
+            raise LedgerInvalid("Run Ledger conflict resolutions must be a list")
+        matches = [value for value in values if isinstance(value, dict) and value.get("write_id") == write_id]
+        return deepcopy(matches[-1]) if matches else None
 
     def record_reconciliation_error(
         self,
@@ -492,6 +773,11 @@ class RunLedger:
         destination_repository: str,
         code: str,
         detail: str,
+        candidate_snapshot_hash: str | None = None,
+        stage: str = "reconcile",
+        remote_status: int | None = None,
+        remote_error: str | None = None,
+        next_action: str | None = None,
     ) -> None:
         errors = self._data.setdefault("reconciliation_errors", [])
         if not isinstance(errors, list):
@@ -503,6 +789,11 @@ class RunLedger:
                 "destination_repository": destination_repository,
                 "code": code,
                 "detail": detail,
+                "candidate_snapshot_hash": candidate_snapshot_hash,
+                "stage": stage,
+                "remote_status": remote_status,
+                "remote_error": remote_error,
+                "next_action": next_action,
                 "recorded_at": _now(),
             }
         )
@@ -528,6 +819,19 @@ class RunLedger:
             raise LedgerInvalid("Run Ledger contains conflicting Issue Records")
         return matches[0] if matches else None
 
+    def snapshot_hash_for_record(self, record: IssueRecord) -> str | None:
+        for event in reversed(self.write_attempts):
+            if (
+                event.get("source_sha256") == record.source_sha256
+                and event.get("candidate_id") == record.candidate_id
+                and event.get("destination_repository") == record.destination_repository
+                and event.get("payload_hash") == record.payload_hash
+            ):
+                value = event.get("candidate_snapshot_hash")
+                if isinstance(value, str):
+                    return value
+        return None
+
     def _append_write_state(
         self,
         write_id: str,
@@ -537,6 +841,10 @@ class RunLedger:
         *,
         detail: str | None = None,
         issue_record: IssueRecord | None = None,
+        stage: str | None = None,
+        remote_status: int | None = None,
+        remote_error: str | None = None,
+        next_action: str | None = None,
     ) -> None:
         attempts = self._data.setdefault("write_attempts", [])
         if not isinstance(attempts, list):
@@ -548,6 +856,7 @@ class RunLedger:
             "candidate_id": approval.candidate_id,
             "source_sha256": approval.source_sha256,
             "destination_repository": approval.destination_repository,
+            "candidate_snapshot_hash": approval.candidate_snapshot_hash,
             "payload_hash": approval.payload_hash,
             "marker": _marker_from_approval(approval),
             "recorded_at": _now(),
@@ -556,6 +865,14 @@ class RunLedger:
             value["detail"] = detail
         if issue_record is not None:
             value["issue_record"] = issue_record.model_dump(mode="json")
+        if stage is not None:
+            value["stage"] = stage
+        if remote_status is not None:
+            value["remote_status"] = remote_status
+        if remote_error is not None:
+            value["remote_error"] = remote_error
+        if next_action is not None:
+            value["next_action"] = next_action
         attempts.append(value)
         self._write()
 
