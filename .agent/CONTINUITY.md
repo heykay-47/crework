@@ -67,6 +67,7 @@
 
 ## [OUTCOMES]
 
+- 2026-09-18T17:42:00Z [TOOL] Docker image `client-feedback-triage` rebuilt successfully from the committed implementation after the final test suite.
 - 2026-09-18T17:10:00Z [TOOL] Final ticket #17 verification passed: full pytest suite 155 tests, strict mypy across 33 files, focused acceptance/matrix/write/trust/recovery tests, and `git diff --check`. Final two-axis review found no hard standards violations and no remaining exact-sequence or interaction-proof gaps; only bounded duplication/data-clump judgement calls remain.
 - 2026-09-17T14:42:25Z [TOOL] Issue #12 implementation passes the final suite (51 tests), strict mypy (16 source files), Docker image build, and two-axis `/code-review`; both review axes report no remaining findings. Implementation committed as `a561bb2`.
 - 2026-09-17T18:45:07Z [TOOL] Issue #14 implementation committed as `8a1adba`: public deterministic frame selection, strict extraction records, per-attempt ledger persistence, nonterminal FFmpeg handling, CLI output, tests, and README documentation are complete; both canonical required frames were visually inspected.
