@@ -1,0 +1,10 @@
+{
+  "attempt_id": "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+  "evidence_artifact_id": "artifact_014",
+  "external_write_count": 0,
+  "incident_id": "background-rejection",
+  "kind": "background_interaction_rejection",
+  "observed_code": "background_not_supported",
+  "observed_status": "rejected",
+  "summary": "Persisted background interaction rejection proof for attempt b1a3a3a7-9791-41bc-8d64-ffd4462268dd."
+}

@@ -241,11 +241,13 @@ _SENSITIVE_BYTES = re.compile(
     rb"HOME|PATH|PWD|USER|SHELL|VIRTUAL_ENV)\s*=|"
     rb"GEMINI_API_KEY|GITHUB_TOKEN|GOOGLE_API_KEY|Authorization\s*:\s*(?:Bearer|Basic)|"
     rb"(?:gh[pousr]_|github_pat_|AIza|sk-)[A-Za-z0-9_\-.]{12,}|"
-    rb"(?:/(?:home|Users|private|tmp|var|mnt|root|opt|workspace|workspaces)/|[A-Za-z]:\\)|"
+    rb"(?:/(?:home|Users|private|tmp|var|mnt|root|opt|workspace|workspaces)/|"
+    rb"[A-Za-z]:\\[A-Za-z0-9_. -]{4,})|"
     rb"(?:\.\.?/){2}|"
     rb"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})",
     re.IGNORECASE,
 )
+_PRINTABLE_RUN = re.compile(rb"[\x20-\x7e]{4,}")
 _HASH_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _PUBLIC_FINGERPRINT_INPUTS = frozenset(
     {
@@ -257,6 +259,7 @@ _PUBLIC_FINGERPRINT_INPUTS = frozenset(
         "policy",
         "dependency",
         "implementation",
+        "request_trust",
         "fixture_version",
         "ground_truth",
     }
@@ -314,7 +317,13 @@ def _require_file(path: Path, *, label: str) -> Path:
 
 
 def _audit_public_bytes(data: bytes, *, label: str) -> None:
-    if _SENSITIVE_BYTES.search(data):
+    # Binary media can contain arbitrary byte pairs that resemble a Windows
+    # path or credential prefix by chance.  Inspect the whole payload for
+    # text artifacts, but apply the sensitive-pattern audit to printable runs
+    # for images/GIFs so real metadata is still rejected without rejecting
+    # unrelated compressed pixels.
+    printable = b"\n".join(_PRINTABLE_RUN.findall(data))
+    if _SENSITIVE_BYTES.search(printable):
         raise ProofPackageError(f"sensitive credential, personal data, or private path found in {label}")
 
 
@@ -989,7 +998,7 @@ def _validate_incident_provenance(
     write_attempts = tuple(
         value
         for epoch, _ in epochs
-        for value in epoch.write_attempts
+        for value in epoch.latest_write_attempts()
     )
     for incident in incidents:
         attempt = attempts[incident.attempt_id]
@@ -1359,7 +1368,34 @@ def build_proof_package(
 
         public_incidents = tuple(incident_proofs.values())
         background = next(item for item in public_incidents if item.kind == "background_interaction_rejection")
-        zero_write = next(item for item in public_incidents if item.kind in {"incomplete_analysis", "uncertain_write"})
+        zero_write_incidents = tuple(
+            item for item in public_incidents if item.kind in {"incomplete_analysis", "uncertain_write"}
+        )
+        request_contract = _safe_fingerprint_inputs(ledger).get("request_trust")
+        trust_claims: tuple[ProofClaim, ...] = ()
+        if request_contract is not None:
+            verified_attempts = [attempt for attempt in ledger.attempts if attempt.get("status") == "verified"]
+            final_safe_attempt = _safe_attempt(
+                final_attempt,
+                fingerprint=ledger.analysis_fingerprint,
+                frame_paths={},
+            )
+            trust_claims = (
+                claim(
+                    "claim_request_trust",
+                    "The acceptance attempts preserve the stored-stream trust contract and usage evidence.",
+                    "fingerprint_inputs.request_trust plus verified attempt interaction/pair/usage fields",
+                    "stream=True, store=True; exact stored interaction; completed; matched pairs; usage recorded",
+                    (
+                        f"{request_contract}; {len(verified_attempts)} verified attempts; "
+                        f"final interaction_verified={final_safe_attempt['interaction_verified']}; "
+                        f"processing pairs={final_safe_attempt['processing_pair_count']}; "
+                        f"usage={final_safe_attempt['gemini_usage']}"
+                    ),
+                    (image_slots[2].artifact_id, ledger_artifact_id),
+                    acceptance.qualified_attempt_ids,
+                ),
+            )
         claim_index = (
             claim(
                 "claim_acceptance",
@@ -1370,6 +1406,7 @@ def build_proof_package(
                 (image_slots[3].artifact_id, ledger_artifact_id),
                 acceptance.qualified_attempt_ids,
             ),
+            *trust_claims,
             claim(
                 "claim_fingerprint",
                 "Every settled behavior fingerprint is preserved and the current epoch is identified.",
@@ -1417,12 +1454,22 @@ def build_proof_package(
             ),
             claim(
                 "claim_zero_unsafe_writes",
-                "An injected incomplete or uncertain case demonstrates zero unsafe writes.",
+                "Injected incomplete and uncertain cases demonstrate zero unsafe writes.",
                 "incident.external_write_count == 0",
                 "zero external writes",
-                f"{zero_write.kind}; external writes {zero_write.external_write_count}",
-                (incident_json_artifacts[zero_write.incident_id], incident_artifact_ids[zero_write.incident_id]),
-                (zero_write.attempt_id,),
+                "; ".join(
+                    f"{incident.kind}; external writes {incident.external_write_count}"
+                    for incident in zero_write_incidents
+                ),
+                tuple(
+                    artifact_id
+                    for incident in zero_write_incidents
+                    for artifact_id in (
+                        incident_json_artifacts[incident.incident_id],
+                        incident_artifact_ids[incident.incident_id],
+                    )
+                ),
+                tuple(incident.attempt_id for incident in zero_write_incidents),
             ),
             claim(
                 "claim_image_sequence",

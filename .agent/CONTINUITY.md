@@ -2,6 +2,7 @@
 
 ## [PLANS]
 
+- 2026-09-19T01:55:18Z [USER] Implement GitHub issue #19: publish the evidence-linked buildathon submission, regenerate the sanitized proof media, verify it, review it, and commit the current branch.
 - 2026-09-18T18:00:00Z [USER] Implement GitHub issue #18: build a sanitized, claim-linked proof package for a passed acceptance cycle, with nine images, an authentic 20–30 second GIF timeline, failure proof, frozen bundle contents, final review, and commit.
 - 2026-09-18T13:55:00Z [USER] Implement issue #17's frozen acceptance cycle: deterministic safety matrix, exact three-fresh-analysis gate, reset semantics, scoped measurements/manual baseline, final review, and commit.
 - 2026-09-18T00:00:00Z [USER] Implement GitHub issue #15 with TDD at the approval/write seams, run targeted checks and the full suite, review with `/code-review`, then commit on the current branch.
@@ -11,6 +12,9 @@
 
 ## [DECISIONS]
 
+- 2026-09-19T01:55:18Z [CODE] Public proof metadata uses a separate allowlisted `request_trust` fingerprint input; the actual acceptance fixture fingerprint is derived with `fingerprint_inputs_digest`, while the stored-stream contract remains explicitly labeled deterministic harness evidence.
+- 2026-09-19T01:55:18Z [CODE] Proof incident validation evaluates the latest persisted write state per write ID, so a normal `write_pending` → `write_uncertain` lifecycle can prove fail-closed uncertainty without treating its historical pending event as an unsafe current write.
+- 2026-09-19T01:55:18Z [CODE] The public package includes persisted background-rejection, incomplete-analysis, and uncertain-write incidents; its zero-write claim aggregates all incomplete/uncertain incident artifacts and attempts.
 - 2026-09-18T18:00:00Z [CODE] Use a deep `feedback_triage.proof` seam with a read-only `package` CLI: it loads a passed AcceptanceStore/current Run Ledger plus archived fingerprint ledgers, validates supplied sanitized image/GIF/incident manifests, and writes one atomic bundle without reanalysis or GitHub mutation.
 - 2026-09-18T18:00:00Z [CODE] The proof package will allowlist ledger fields, omit interaction IDs/raw diagnostics/API errors/prose, rewrite copied asset paths relative to the bundle, require exactly nine ordered image slots, and require explicit GIF timeline metadata plus zero-write trust/failure incidents.
 - 2026-09-18T13:55:00Z [CODE] Keep the existing library `triage_recording` full pipeline for prior callers, but make the CLI acceptance protocol explicit: `analyze` records verified/scored analysis without Evidence Frames, and `run --reanalyze` is the only command that may advance the third-run gate into frames, review, Approval, and writes. Live writes remain opt-in through the configured destination/token.
@@ -34,6 +38,8 @@
 
 ## [PROGRESS]
 
+- 2026-09-19T01:55:18Z [CODE] Issue #19 submission artifacts now include `SUBMISSION.md`, `docs/submission/README.md`, a generated nine-image/three-Evidence-Frame/24.01-second GIF proof bundle, manual baseline, request-trust claim, and three sanitized non-happy-path incidents.
+- 2026-09-19T01:55:18Z [TOOL] Focused proof/submission tests passed (5), full pytest passed (160), strict mypy passed (36 files), Docker build passed, generated fixture/hash card was visually checked, and both final review axes found no hard blockers.
 - 2026-09-18T18:45:00Z [CODE] Issue #18 proof packaging now correlates public incidents to persisted failed analyses/uncertain writes, validates all three qualified attempts and deterministic policy passes, requires final Approvals/written Issue Records, validates GIF block structure, sanitizes timeline/JSON evidence, and emits explicit image/GIF/bundle/sanitization claims.
 - 2026-09-18T19:23:18Z [TOOL] Proof-focused tests (3), full suite (158), strict mypy across `feedback_triage`, `main.py`, and `tests`, `git diff --check`, package help, final two-axis review, and Docker build all pass; implementation committed as `2d0084a`.
 - 2026-09-18T17:10:00Z [CODE] The earlier pending-full-suite note is superseded: deterministic matrix coverage now includes recovery, adoption, explicit retries/overrides, conflict resolution, lock blocking, and corrupt-ledger fail-closed cases, with tuple assertions for terminal state and external-write counts.
@@ -54,6 +60,8 @@
 
 ## [DISCOVERIES]
 
+- 2026-09-19T01:55:18Z [TOOL] Fixed generated-card readability by rendering each card line as a separate FFmpeg drawtext filter and reducing font size for long hash lines; the complete fixture SHA is now visible in `02-fixture-manifest.png`.
+- 2026-09-19T01:55:18Z [TOOL] Binary media can contain random path-like byte sequences; public-byte auditing now checks printable runs and retains credential/path rejection without rejecting valid generated PNGs.
 - 2026-09-18T18:45:00Z [TOOL] The first #18 review found that labels/counts alone were insufficient proof: final persisted Approval/write/Issue Record metadata, incident provenance, all qualifying attempt results, and a non-header-only GIF structure are now checked before packaging.
 - 2026-09-18T18:45:00Z [CODE] The production CLI uses shell-free `ffprobe` for GIF duration; the builder's injectable duration seam remains for deterministic tests, while copied GIF bytes must still contain a valid parsed frame structure.
 - 2026-09-18T16:29:39Z [CODE] Acceptance history cannot be trusted from opaque attempt IDs alone: the third run now requires the current ledger fingerprint and recomputes the canonical semantic score from each prior persisted policy result before review/write.
@@ -74,6 +82,7 @@
 
 ## [OUTCOMES]
 
+- 2026-09-19T01:55:18Z [TOOL] Issue #19 implementation is verified and staged; commit is the remaining completion step.
 - 2026-09-18T19:24:00Z [TOOL] Issue #18 implementation committed as `2d0084a`: read-only `package`/`proof` CLI, claim-linked sanitized bundle, persisted failure/write provenance, structural GIF validation, nine-image sequence, tests, README, final review, and Docker build are complete.
 - 2026-09-18T19:24:00Z [TOOL] Final Standards review found no documented violations; remaining review notes are bounded Fowler judgement calls around repeated artifact provenance and incident-kind branching. Binary media sanitization is byte-pattern based and does not provide OCR-level visual-content inspection.
 - 2026-09-18T17:42:00Z [TOOL] Docker image `client-feedback-triage` rebuilt successfully from the committed implementation after the final test suite.

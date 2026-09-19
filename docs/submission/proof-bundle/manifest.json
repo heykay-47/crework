@@ -1,0 +1,663 @@
+{
+  "acceptance_attempt_ids": [
+    "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+    "d0ec1740-9d07-4a11-9134-de59d06582bf",
+    "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+  ],
+  "artifacts": [
+    {
+      "artifact_id": "artifact_001",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/01-capability-date.png",
+      "sha256": "dc3326490f763d97a1b0f4d3e62a33138e3c870313b791aea2c0ca4d8959d5e7",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_002",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/02-fixture-manifest.png",
+      "sha256": "4f12b9b0c93c1d39f599605019a491979aa6acce581421d3ff3319340f4a327a",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_003",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/03-request-trust.png",
+      "sha256": "3a1e406fd45a5d05cd5e287d7de80e77af80ff9b4a9362079049ddc09d2fad40",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_004",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/04-three-run-summary.png",
+      "sha256": "15350052b23acdd5c93a7e1c5700ebbf8f3c9bac90a15d8d2b2b74653aaf2e9c",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_005",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/05-six-routes.png",
+      "sha256": "8eb9e9dd1d94c217760e549b04de90da7d153c6c9358c5d7589dc7ef16c9b7ed",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_006",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/06-evidence-frames.png",
+      "sha256": "2cbada073934ca66d81f95cb74e15d037bf3931b4be7d7e55dc2517cd435dbad",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_007",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/07-manual-review-approval.png",
+      "sha256": "d571e11c257f7c37b274042c89ecee512c89b5842a1235f070dcbad72a1ea621",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_008",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/08-final-issues.png",
+      "sha256": "8044a096a09c20fef743c3e6f2bd7e22c4ecb5a334601f26559b78cbffa97d3c",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_009",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "images/09-sanitized-run-ledger.png",
+      "sha256": "51eb3205c15a398436e0b41b95d293a6085b6645999b09068a376c9c1b4f2019",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_010",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "gif",
+      "media_type": "image/gif",
+      "path": "media/third-run.gif",
+      "sha256": "ba057786f26b367a31a1db5ad78efef6820a77709b55cd655906c3932ac65277",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_011",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "evidence-frames/cand_191f3b4d6d46effb.png",
+      "sha256": "ea4cf52520a4fd43a5dcb8598ce594250a07c8cd1121adc4cb68c348f3889dfb",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_012",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "evidence-frames/cand_2c8c489a2f60f030.png",
+      "sha256": "61dff299ec45b0f2d90550cdbfdce4ecf8dc5c831f0f8f73c7b9e2752f4e716b",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_013",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "image",
+      "media_type": "image/png",
+      "path": "evidence-frames/cand_481753781d347a60.png",
+      "sha256": "108fad66090a356767f35b8580a0a9e3aa6c1c8b86c99561a316f338815fda02",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_014",
+      "attempt_ids": [
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "incidents/background-rejection-evidence.json",
+      "sha256": "b2212e9e17b8901431853a759eea6ca78ff320f2eab82aea7c8f3f8f101cdd64",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_015",
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "incidents/incomplete-analysis-evidence.json",
+      "sha256": "b6e4677ae8898a643a51cac1e1db7efa98c2bf9563e27b7c2ec4ca55e5fcbc08",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_016",
+      "attempt_ids": [
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "incidents/uncertain-write-evidence.json",
+      "sha256": "9750b629c8a2ee6842cf54baa096fa72e7eac640d18fcb2f5a446ed4a23e1ae7",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_017",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "media/third-run-timeline.json",
+      "sha256": "5e2bdfddc45a0234d5c75dd5efb5088fe3db446c0559de955da6e97971e5d192",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_018",
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "ledger.json",
+      "sha256": "2b341d69303285a5548861edb97573e66f8a2d7007150e7b3fd634365f009c50",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_019",
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "deterministic-report.json",
+      "sha256": "3e1348bd1cddbaeae113f9f2a9da8ed1dcb5b0263dac6811aef9636dcb961197",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_020",
+      "attempt_ids": [
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "incidents/background-rejection.json",
+      "sha256": "0b1c408e4cf810896cacc1e0979396e842c2a861626b7d39fb79d0720791cb30",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_021",
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "incidents/incomplete-analysis.json",
+      "sha256": "979c909049572ce04b7fc2b7fc34c211d7ef1c55fe848cd02f9d4493cfc845bc",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_022",
+      "attempt_ids": [
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "incidents/uncertain-write.json",
+      "sha256": "c3273522c5a95839862e9e267265b3eb06aa0a71b8d7f837bb67dbec226a8285",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    },
+    {
+      "artifact_id": "artifact_023",
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      ],
+      "kind": "json",
+      "media_type": "application/json",
+      "path": "claim-index.json",
+      "sha256": "17788542f8f0dc41ae52be5ca7d196a694b4e5eaea98d211f55f3b4832afae54",
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    }
+  ],
+  "claim_index": [
+    {
+      "artifact_ids": [
+        "artifact_004",
+        "artifact_018"
+      ],
+      "attempt_ids": [
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The frozen acceptance cycle passed with three distinct qualifying attempts.",
+      "claim_id": "claim_acceptance",
+      "executable_check": "AcceptanceRecord.passed and len(qualified_attempt_ids) == 3",
+      "expected": "passed; exactly three distinct attempts",
+      "observed": "passed; attempts c59e77c4-8be8-403d-88ef-5f3cd7ad62cf, d0ec1740-9d07-4a11-9134-de59d06582bf, 9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_003",
+        "artifact_018"
+      ],
+      "attempt_ids": [
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The acceptance attempts preserve the stored-stream trust contract and usage evidence.",
+      "claim_id": "claim_request_trust",
+      "executable_check": "fingerprint_inputs.request_trust plus verified attempt interaction/pair/usage fields",
+      "expected": "stream=True, store=True; exact stored interaction; completed; matched pairs; usage recorded",
+      "observed": "stream=True; store=True; persist interaction.created; retrieve exact ID; require completed and matched processing pairs; 3 verified attempts; final interaction_verified=True; processing pairs=2; usage={'total_token_count': 18}",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_009",
+        "artifact_018"
+      ],
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      ],
+      "claim": "Every settled behavior fingerprint is preserved and the current epoch is identified.",
+      "claim_id": "claim_fingerprint",
+      "executable_check": "RunLedger.load for current and ledger-*.json archives",
+      "expected": "all settled ledgers validate and hashes are unique",
+      "observed": "1 validated fingerprint epochs",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_002",
+        "artifact_019"
+      ],
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The final persisted policy result reproduces the deterministic fixture score.",
+      "claim_id": "claim_deterministic_score",
+      "executable_check": "score_policy_result(final_policy, ground_truth).passed",
+      "expected": "passed with all six authored cases matched",
+      "observed": "passed; matched 6 cases and 4 actionable routes",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_006",
+        "artifact_007",
+        "artifact_018"
+      ],
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The final run contains both required Evidence Frames and the reviewed routes.",
+      "claim_id": "claim_evidence_and_review",
+      "executable_check": "EvidenceFrameRecord validation and final write/Approval metadata",
+      "expected": "required Evidence Frames extracted and routes reviewed",
+      "observed": "3 Evidence Frames copied; 3 Approvals persisted",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_008",
+        "artifact_018"
+      ],
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The final run has one persisted written Issue Record for every actionable route.",
+      "claim_id": "claim_final_issues",
+      "executable_check": "latest_write_attempts(final_attempt) == written and IssueRecord metadata matches Approval",
+      "expected": "3 verified written Issue outcomes",
+      "observed": "3 written Issue Records persisted",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_020",
+        "artifact_014"
+      ],
+      "attempt_ids": [
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd"
+      ],
+      "claim": "The public proof includes the recorded rejection of a background interaction request.",
+      "claim_id": "claim_background_rejection",
+      "executable_check": "incident.kind == background_interaction_rejection and observed_status is rejected/failed",
+      "expected": "rejected before any external write",
+      "observed": "rejected; external writes 0",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_021",
+        "artifact_015",
+        "artifact_022",
+        "artifact_016"
+      ],
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66",
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98"
+      ],
+      "claim": "Injected incomplete and uncertain cases demonstrate zero unsafe writes.",
+      "claim_id": "claim_zero_unsafe_writes",
+      "executable_check": "incident.external_write_count == 0",
+      "expected": "zero external writes",
+      "observed": "incomplete_analysis; external writes 0; uncertain_write; external writes 0",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_001",
+        "artifact_002",
+        "artifact_003",
+        "artifact_004",
+        "artifact_005",
+        "artifact_006",
+        "artifact_007",
+        "artifact_008",
+        "artifact_009"
+      ],
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The public proof contains the required nine-image sequence in order.",
+      "claim_id": "claim_image_sequence",
+      "executable_check": "tuple(image.label for image in image_sequence) == IMAGE_SEQUENCE",
+      "expected": "nine required labels in fixed order",
+      "observed": "9 labels in the required order",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_010",
+        "artifact_017"
+      ],
+      "attempt_ids": [
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      ],
+      "claim": "The edited GIF is a 20-30 second recorded-run summary, not a watcher or fabricated replay.",
+      "claim_id": "claim_gif_timeline",
+      "executable_check": "duration in range and GifTimeline event/flag validation",
+      "expected": "20-30 seconds; four ordered events; no watcher; no fabricated replay",
+      "observed": "24.01 seconds; 4 ordered events; recorded run",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_001",
+        "artifact_002",
+        "artifact_003",
+        "artifact_004",
+        "artifact_005",
+        "artifact_006",
+        "artifact_007",
+        "artifact_008",
+        "artifact_009",
+        "artifact_010",
+        "artifact_011",
+        "artifact_012",
+        "artifact_013",
+        "artifact_014",
+        "artifact_015",
+        "artifact_016",
+        "artifact_017",
+        "artifact_018",
+        "artifact_019",
+        "artifact_020",
+        "artifact_021",
+        "artifact_022"
+      ],
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      ],
+      "claim": "Every staged public artifact passed the credential, personal-data, and private-path audit.",
+      "claim_id": "claim_public_sanitization",
+      "executable_check": "_audit_public_bytes applied before each artifact is written or copied",
+      "expected": "no sensitive bytes in public artifacts",
+      "observed": "22 staged artifacts audited",
+      "status": "passed"
+    },
+    {
+      "artifact_ids": [
+        "artifact_001",
+        "artifact_002",
+        "artifact_003",
+        "artifact_004",
+        "artifact_005",
+        "artifact_006",
+        "artifact_007",
+        "artifact_008",
+        "artifact_009",
+        "artifact_010",
+        "artifact_011",
+        "artifact_012",
+        "artifact_013",
+        "artifact_014",
+        "artifact_015",
+        "artifact_016",
+        "artifact_017",
+        "artifact_018",
+        "artifact_019",
+        "artifact_020",
+        "artifact_021",
+        "artifact_022"
+      ],
+      "attempt_ids": [
+        "0ede186c-14b7-424a-85f3-5ba16d777d66",
+        "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+        "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+        "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+        "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      ],
+      "claim": "The frozen bundle contains the required screenshots, media, reports, sanitized ledger, incidents, and claim index.",
+      "claim_id": "claim_bundle_contents",
+      "executable_check": "ProofPackage validation plus staged artifact inventory",
+      "expected": "nine images, GIF/timeline, Evidence Frames, incidents, ledger, report, and claim index",
+      "observed": "9 images; 3 Evidence Frames; 22 pre-manifest artifacts",
+      "status": "passed"
+    }
+  ],
+  "claim_index_path": "claim-index.json",
+  "current_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+  "deterministic_report": {
+    "actionable_result_count": 4,
+    "errors": [],
+    "fixture_version": "canonical-six-case-v3",
+    "matched_case_ids": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "E",
+      "F"
+    ],
+    "passed": true
+  },
+  "final_attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+  "fingerprint_epochs": [
+    {
+      "current": true,
+      "fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+      "fingerprint_inputs": {
+        "model": "gemini-3.5-flash-lite",
+        "request_trust": "stream=True; store=True; persist interaction.created; retrieve exact ID; require completed and matched processing pairs",
+        "source": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+      },
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+    }
+  ],
+  "gif": {
+    "artifact_id": "artifact_010",
+    "duration_seconds": 24.01,
+    "final_attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+    "removed_waits": [
+      {
+        "elapsed_seconds": 41.25,
+        "label": "Gemini processing"
+      },
+      {
+        "elapsed_seconds": 3.5,
+        "label": "GitHub confirmation"
+      }
+    ],
+    "replay_fabricated_output": false,
+    "timeline_artifact_id": "artifact_017",
+    "watcher_used": false
+  },
+  "image_sequence": [
+    {
+      "artifact_id": "artifact_001",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "capability-date",
+      "order": 1
+    },
+    {
+      "artifact_id": "artifact_002",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "fixture-manifest",
+      "order": 2
+    },
+    {
+      "artifact_id": "artifact_003",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "request-trust",
+      "order": 3
+    },
+    {
+      "artifact_id": "artifact_004",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "three-run-summary",
+      "order": 4
+    },
+    {
+      "artifact_id": "artifact_005",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "six-routes",
+      "order": 5
+    },
+    {
+      "artifact_id": "artifact_006",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "evidence-frames",
+      "order": 6
+    },
+    {
+      "artifact_id": "artifact_007",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "manual-review-approval",
+      "order": 7
+    },
+    {
+      "artifact_id": "artifact_008",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "final-issues",
+      "order": 8
+    },
+    {
+      "artifact_id": "artifact_009",
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "label": "sanitized-run-ledger",
+      "order": 9
+    }
+  ],
+  "incidents": [
+    {
+      "attempt_id": "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
+      "external_write_count": 0,
+      "incident_id": "background-rejection",
+      "kind": "background_interaction_rejection",
+      "observed_code": "background_not_supported",
+      "observed_status": "rejected",
+      "summary": "Persisted background interaction rejection proof for attempt b1a3a3a7-9791-41bc-8d64-ffd4462268dd."
+    },
+    {
+      "attempt_id": "0ede186c-14b7-424a-85f3-5ba16d777d66",
+      "external_write_count": 0,
+      "incident_id": "incomplete-analysis",
+      "kind": "incomplete_analysis",
+      "observed_code": "processing_unverified",
+      "observed_status": "failed",
+      "summary": "Persisted incomplete analysis proof for attempt 0ede186c-14b7-424a-85f3-5ba16d777d66."
+    },
+    {
+      "attempt_id": "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+      "external_write_count": 0,
+      "incident_id": "uncertain-write",
+      "kind": "uncertain_write",
+      "observed_code": "write_uncertain",
+      "observed_status": "uncertain",
+      "summary": "Persisted uncertain write proof for attempt c368a8b5-4d64-45a3-b1ed-1712732f6b98."
+    }
+  ],
+  "sanitized_ledger_artifact_id": "artifact_018",
+  "sanitized_ledger_path": "ledger.json",
+  "settled_fingerprint_hashes": [
+    "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853"
+  ],
+  "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc",
+  "version": 1
+}

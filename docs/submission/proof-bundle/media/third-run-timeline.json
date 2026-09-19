@@ -1,0 +1,42 @@
+{
+  "events": [
+    {
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "description": "Recorded third-run-command.",
+      "elapsed_seconds": 1.0,
+      "label": "third-run-command"
+    },
+    {
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "description": "Recorded verified-analysis.",
+      "elapsed_seconds": 2.0,
+      "label": "verified-analysis"
+    },
+    {
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "description": "Recorded routes-and-review.",
+      "elapsed_seconds": 3.0,
+      "label": "routes-and-review"
+    },
+    {
+      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+      "description": "Recorded verified-issues.",
+      "elapsed_seconds": 4.0,
+      "label": "verified-issues"
+    }
+  ],
+  "final_attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+  "recorded_run": true,
+  "removed_waits": [
+    {
+      "elapsed_seconds": 41.25,
+      "label": "Gemini processing - removed wait: 41.25s actual"
+    },
+    {
+      "elapsed_seconds": 3.5,
+      "label": "GitHub confirmation - removed wait: 3.50s actual"
+    }
+  ],
+  "replay_fabricated_output": false,
+  "watcher_used": false
+}

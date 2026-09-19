@@ -1,0 +1,14 @@
+{
+  "actionable_result_count": 4,
+  "errors": [],
+  "fixture_version": "canonical-six-case-v3",
+  "matched_case_ids": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F"
+  ],
+  "passed": true
+}

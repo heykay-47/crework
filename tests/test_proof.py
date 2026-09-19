@@ -11,6 +11,7 @@ import main as cli
 from feedback_triage.acceptance import AcceptanceRecord, AcceptanceStore
 from feedback_triage.approval import build_approval, marker_for
 from feedback_triage.evaluation import load_ground_truth
+from feedback_triage.fingerprint import fingerprint_inputs_digest
 from feedback_triage.ledger import RunLedger
 from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, IssueRecord
 from feedback_triage.proof import (
@@ -21,6 +22,7 @@ from feedback_triage.proof import (
     RemovedWait,
     ProofIncident,
     ProofPackageError,
+    _audit_public_bytes,
     build_proof_package,
 )
 from tests.test_acceptance_cli import _canonical_policy
@@ -48,14 +50,21 @@ def _gif() -> bytes:
     )
 
 
-def _seed(tmp_path: Path) -> tuple[AcceptanceRecord, RunLedger, dict[str, Path], Path, GifTimeline, tuple[ProofIncident, ...]]:
+def _seed(
+    tmp_path: Path,
+    *,
+    fingerprint_inputs: dict[str, str] | None = None,
+) -> tuple[AcceptanceRecord, RunLedger, dict[str, Path], Path, GifTimeline, tuple[ProofIncident, ...]]:
     output = tmp_path / "output"
-    fingerprint = "b" * 64
+    inputs = {"source": SOURCE, "model": "gemini-3.5-flash-lite"}
+    if fingerprint_inputs:
+        inputs.update(fingerprint_inputs)
+    fingerprint = fingerprint_inputs_digest(inputs)
     ledger = RunLedger.create(
         output,
         source_sha256=SOURCE,
         fingerprint=fingerprint,
-        fingerprint_inputs={"source": SOURCE, "model": "gemini-3.5-flash-lite"},
+        fingerprint_inputs=inputs,
     )
     acceptance_store = AcceptanceStore(
         output / SOURCE / "acceptance.json",
@@ -71,6 +80,17 @@ def _seed(tmp_path: Path) -> tuple[AcceptanceRecord, RunLedger, dict[str, Path],
     ledger.fail(rejected_attempt, code="background_not_supported", detail="background request rejected")
     incomplete_attempt = ledger.start_attempt()
     ledger.fail(incomplete_attempt, code="processing_unverified", detail="analysis did not complete")
+    uncertain_attempt = ledger.start_attempt()
+    uncertain_approval = build_approval(SOURCE, actionable[0], "demo/feedback")
+    uncertain_write_id = ledger.record_write_pending(uncertain_attempt, uncertain_approval)
+    ledger.record_measurement(uncertain_attempt, "external_write_count", 0.0)
+    ledger.record_write_state(
+        uncertain_write_id,
+        uncertain_attempt,
+        uncertain_approval,
+        "write_uncertain",
+        detail="response status was unavailable; reconciliation required",
+    )
 
     for step, reanalyze in (("analyze", False), ("analyze", True), ("run", True)):
         acceptance_store.begin(step, reanalyze=reanalyze)  # type: ignore[arg-type]
@@ -178,6 +198,16 @@ def _seed(tmp_path: Path) -> tuple[AcceptanceRecord, RunLedger, dict[str, Path],
             observed_status="failed",
             external_write_count=0,
             summary="An injected incomplete analysis produced no external write.",
+            artifact_path=str(incident_artifact),
+        ),
+        ProofIncident(
+            incident_id="uncertain-write",
+            kind="uncertain_write",
+            attempt_id=uncertain_attempt,
+            observed_code="write_uncertain",
+            observed_status="uncertain",
+            external_write_count=0,
+            summary="An unavailable write response remained pending reconciliation without an external write.",
             artifact_path=str(incident_artifact),
         ),
     )
@@ -290,3 +320,10 @@ def test_package_cli_is_read_only_and_rejects_sensitive_artifacts(
             gif_duration_seconds=25.0,
             duration_probe=lambda _path: 25.0,
         )
+
+
+def test_binary_media_audit_ignores_random_path_like_bytes_but_rejects_metadata() -> None:
+    _audit_public_bytes(b"\x89PNG\r\n\x1ay:\\x00\xff\x00", label="public-image")
+
+    with pytest.raises(ProofPackageError, match="sensitive"):
+        _audit_public_bytes(b"\x89PNG\r\n\x89GITHUB_TOKEN=not-a-token", label="public-image")

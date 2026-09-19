@@ -1,0 +1,10 @@
+{
+  "attempt_id": "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+  "evidence_artifact_id": "artifact_016",
+  "external_write_count": 0,
+  "incident_id": "uncertain-write",
+  "kind": "uncertain_write",
+  "observed_code": "write_uncertain",
+  "observed_status": "uncertain",
+  "summary": "Persisted uncertain write proof for attempt c368a8b5-4d64-45a3-b1ed-1712732f6b98."
+}
