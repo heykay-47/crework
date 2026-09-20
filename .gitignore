@@ -7,3 +7,6 @@ __pycache__/
 output/
 inbox/*.mp4
 dist/
+manual-baseline.json
+.agent/bin/
+.agent/capture/

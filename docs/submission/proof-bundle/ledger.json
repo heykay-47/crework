@@ -1,172 +1,117 @@
 {
   "acceptance": {
-    "fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+    "fingerprint": "77b0426245749b8c7319b14c7445dff7f7ce5b7b003049f99fa25a5afa9f33c3",
     "manual_baseline": {
-      "active_human_seconds": 480.0,
+      "active_human_seconds": 1132.0,
       "equivalent_issue_count": 3,
-      "issue_writing_seconds": 120.0,
-      "measured_at": "2026-09-19T00:00:00+00:00",
+      "issue_writing_seconds": 778.0,
+      "measured_at": "2026-09-20T04:06:18+00:00",
       "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc",
-      "watch_seconds": 360.0
+      "watch_seconds": 354.0
     },
     "measurements": [
       {
-        "attempt_id": "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
+        "attempt_id": "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
         "metrics": {
-          "analysis_seconds": 2.0,
+          "analysis_seconds": 32.35023152699978,
           "semantic_score_passed": 1.0,
-          "upload_seconds": 1.0,
-          "wall_clock_seconds": 3.0
+          "upload_seconds": 18.56983172099899,
+          "wall_clock_seconds": 51.60093709300054
         },
         "qualified": true
       },
       {
-        "attempt_id": "d0ec1740-9d07-4a11-9134-de59d06582bf",
+        "attempt_id": "2007e4fa-983d-47be-bd3c-c54b0b307e36",
         "metrics": {
-          "analysis_seconds": 2.0,
+          "analysis_seconds": 21.795017692998954,
           "semantic_score_passed": 1.0,
-          "upload_seconds": 1.0,
-          "wall_clock_seconds": 3.0
+          "upload_seconds": 18.495275406001383,
+          "wall_clock_seconds": 40.757405617001496
         },
         "qualified": true
       },
       {
-        "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+        "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
         "metrics": {
-          "active_human_seconds": 2.0,
-          "active_review_seconds": 2.0,
-          "analysis_seconds": 2.0,
+          "active_human_seconds": 246.3679180449999,
+          "active_review_seconds": 246.38400063599966,
+          "analysis_seconds": 47.33721150400015,
           "external_write_count": 3.0,
-          "frame_seconds": 1.0,
+          "frame_seconds": 0.3873094939999646,
           "semantic_score_passed": 1.0,
-          "upload_seconds": 1.0,
-          "wall_clock_seconds": 3.0,
-          "write_seconds": 1.0
+          "upload_seconds": 18.721333681000033,
+          "wall_clock_seconds": 319.7286368680002,
+          "write_seconds": 3.7299864689998685
         },
         "qualified": true
       }
     ],
     "passed": true,
     "qualified_attempt_ids": [
-      "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-      "d0ec1740-9d07-4a11-9134-de59d06582bf",
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+      "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "reset_count": 0,
     "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
   },
-  "current_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+  "current_fingerprint": "77b0426245749b8c7319b14c7445dff7f7ce5b7b003049f99fa25a5afa9f33c3",
   "epochs": [
     {
       "approvals": [
         {
-          "approved_at": "2026-09-19T01:52:08.991583+00:00",
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "approved_at": "2026-09-20T04:22:02.403389+00:00",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_2c8c489a2f60f030",
-          "candidate_payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff",
-          "candidate_snapshot_hash": "7b54a19394e29ed456b54e4df3dd74e6d64cc369abb7e52a42ddcbc22bcfd920",
-          "destination_repository": "demo/feedback",
+          "candidate_payload_hash": "398234b0ab18b305a6dc3b9c2fb4a380bd074ad376baf4a41d78d8701d29267d",
+          "candidate_snapshot_hash": "97b5df44f7a923202a977eed0e57d59f1cfaa2aa3d32dfe6d68ad16822209d68",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "manual_review_confirmed": false,
-          "operator_label_present": false,
-          "payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff"
+          "operator_label_present": true,
+          "payload_hash": "398234b0ab18b305a6dc3b9c2fb4a380bd074ad376baf4a41d78d8701d29267d"
         },
         {
-          "approved_at": "2026-09-19T01:52:08.993732+00:00",
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "approved_at": "2026-09-20T04:22:03.148275+00:00",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_481753781d347a60",
-          "candidate_payload_hash": "83b2baae9a2c2c7d20fe9577872a6551d41a58de584b7a70bcb4211314d60857",
-          "candidate_snapshot_hash": "4b8492d4e97c3fb2331d1efb18db59a55dcc219362c36f626fc926d4d12a9795",
-          "destination_repository": "demo/feedback",
+          "candidate_payload_hash": "da9f00759dfeb99f3322bdaa867cdfefe279e83980feba6c7bf154f63d40bdf1",
+          "candidate_snapshot_hash": "ca58d7faada9f83c0bdeb86372d2855853b8338bcbd693fc19067ac8df9b09ed",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "manual_review_confirmed": false,
-          "operator_label_present": false,
-          "payload_hash": "83b2baae9a2c2c7d20fe9577872a6551d41a58de584b7a70bcb4211314d60857"
+          "operator_label_present": true,
+          "payload_hash": "da9f00759dfeb99f3322bdaa867cdfefe279e83980feba6c7bf154f63d40bdf1"
         },
         {
-          "approved_at": "2026-09-19T01:52:08.996234+00:00",
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "approved_at": "2026-09-20T04:22:31.890466+00:00",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_191f3b4d6d46effb",
-          "candidate_payload_hash": "4913a413b598415a2e4b136933d3f2382f9c5be52de5806de9dd7f9bdaf632c5",
-          "candidate_snapshot_hash": "56c787d7dce940ca59e716f206d6e3ae3c3bde70833cb11c339e36fa6ef53404",
-          "destination_repository": "demo/feedback",
+          "candidate_payload_hash": "e61bd0ab74c94eff7f5a37ede865f17f77a6bdb0b454e7f1958a58f86b2efcc4",
+          "candidate_snapshot_hash": "ce003ba1d401db54a134d0964c80ea0db3f4eb994bc269b5236524d9e6c94eef",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "manual_review_confirmed": true,
-          "operator_label_present": false,
-          "payload_hash": "4913a413b598415a2e4b136933d3f2382f9c5be52de5806de9dd7f9bdaf632c5"
+          "operator_label_present": true,
+          "payload_hash": "e61bd0ab74c94eff7f5a37ede865f17f77a6bdb0b454e7f1958a58f86b2efcc4"
         }
       ],
       "attempts": [
         {
           "analysis": {
-            "observation_count": 0,
-            "schema_version": null
-          },
-          "attempt_id": "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
-          "completed_at": "2026-09-19T01:52:08.978718+00:00",
-          "epoch_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
-          "evidence_frames": [],
-          "failure_code": "background_not_supported",
-          "gemini_usage": {},
-          "interaction_verified": false,
-          "measurements": {},
-          "policy_result": null,
-          "processing_pair_count": 0,
-          "started_at": "2026-09-19T01:52:08.978553+00:00",
-          "status": "failed"
-        },
-        {
-          "analysis": {
-            "observation_count": 0,
-            "schema_version": null
-          },
-          "attempt_id": "0ede186c-14b7-424a-85f3-5ba16d777d66",
-          "completed_at": "2026-09-19T01:52:08.978984+00:00",
-          "epoch_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
-          "evidence_frames": [],
-          "failure_code": "processing_unverified",
-          "gemini_usage": {},
-          "interaction_verified": false,
-          "measurements": {},
-          "policy_result": null,
-          "processing_pair_count": 0,
-          "started_at": "2026-09-19T01:52:08.978843+00:00",
-          "status": "failed"
-        },
-        {
-          "analysis": {
-            "observation_count": 0,
-            "schema_version": null
-          },
-          "attempt_id": "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
-          "completed_at": null,
-          "epoch_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
-          "evidence_frames": [],
-          "gemini_usage": {},
-          "interaction_verified": false,
-          "measurements": {
-            "external_write_count": 0.0
-          },
-          "policy_result": null,
-          "processing_pair_count": 0,
-          "started_at": "2026-09-19T01:52:08.979137+00:00",
-          "status": "starting"
-        },
-        {
-          "analysis": {
-            "observation_count": 1,
+            "observation_count": 6,
             "schema_version": "1.0"
           },
-          "attempt_id": "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-          "completed_at": "2026-09-19T01:52:08.980207+00:00",
-          "epoch_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+          "attempt_id": "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+          "completed_at": "2026-09-19T03:36:49.431313+00:00",
+          "epoch_fingerprint": "77b0426245749b8c7319b14c7445dff7f7ce5b7b003049f99fa25a5afa9f33c3",
           "evidence_frames": [],
           "gemini_usage": {
-            "total_token_count": 18
+            "total_tokens": 33733
           },
           "interaction_verified": true,
           "measurements": {
-            "analysis_seconds": 2.0,
+            "analysis_seconds": 32.35023152699978,
             "semantic_score_passed": 1.0,
-            "upload_seconds": 1.0,
-            "wall_clock_seconds": 3.0
+            "upload_seconds": 18.56983172099899,
+            "wall_clock_seconds": 51.60093709300054
           },
           "policy_result": {
             "result_count": 5,
@@ -175,7 +120,7 @@
                 "approval_eligible": true,
                 "candidate_id": "cand_2c8c489a2f60f030",
                 "confidence": "high",
-                "evidence_frame_seconds": 20.5,
+                "evidence_frame_seconds": 23.0,
                 "evidence_span_count": 1,
                 "intent": "explicit_change",
                 "reason_code": null,
@@ -188,7 +133,7 @@
                 "approval_eligible": true,
                 "candidate_id": "cand_481753781d347a60",
                 "confidence": "high",
-                "evidence_frame_seconds": 80.5,
+                "evidence_frame_seconds": 73.0,
                 "evidence_span_count": 2,
                 "intent": "explicit_problem",
                 "reason_code": null,
@@ -200,8 +145,8 @@
               {
                 "approval_eligible": false,
                 "candidate_id": "cand_f246c26704fabaae",
-                "confidence": "high",
-                "evidence_frame_seconds": 160.5,
+                "confidence": "medium",
+                "evidence_frame_seconds": 150.0,
                 "evidence_span_count": 1,
                 "intent": "ambiguous_reaction",
                 "reason_code": null,
@@ -214,7 +159,7 @@
                 "approval_eligible": false,
                 "candidate_id": "cand_9752fd020e6a3390",
                 "confidence": "high",
-                "evidence_frame_seconds": 270.5,
+                "evidence_frame_seconds": 252.5,
                 "evidence_span_count": 1,
                 "intent": "question",
                 "reason_code": "question_not_request",
@@ -226,8 +171,8 @@
               {
                 "approval_eligible": false,
                 "candidate_id": "cand_191f3b4d6d46effb",
-                "confidence": "high",
-                "evidence_frame_seconds": 320.5,
+                "confidence": "medium",
+                "evidence_frame_seconds": 321.5,
                 "evidence_span_count": 1,
                 "intent": "none",
                 "reason_code": null,
@@ -239,28 +184,28 @@
             ],
             "schema_version": "1.0"
           },
-          "processing_pair_count": 2,
-          "started_at": "2026-09-19T01:52:08.979964+00:00",
+          "processing_pair_count": 4,
+          "started_at": "2026-09-19T03:35:58.147026+00:00",
           "status": "verified"
         },
         {
           "analysis": {
-            "observation_count": 1,
+            "observation_count": 6,
             "schema_version": "1.0"
           },
-          "attempt_id": "d0ec1740-9d07-4a11-9134-de59d06582bf",
-          "completed_at": "2026-09-19T01:52:08.982120+00:00",
-          "epoch_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+          "attempt_id": "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+          "completed_at": "2026-09-19T03:37:51.917777+00:00",
+          "epoch_fingerprint": "77b0426245749b8c7319b14c7445dff7f7ce5b7b003049f99fa25a5afa9f33c3",
           "evidence_frames": [],
           "gemini_usage": {
-            "total_token_count": 18
+            "total_tokens": 52577
           },
           "interaction_verified": true,
           "measurements": {
-            "analysis_seconds": 2.0,
+            "analysis_seconds": 21.795017692998954,
             "semantic_score_passed": 1.0,
-            "upload_seconds": 1.0,
-            "wall_clock_seconds": 3.0
+            "upload_seconds": 18.495275406001383,
+            "wall_clock_seconds": 40.757405617001496
           },
           "policy_result": {
             "result_count": 5,
@@ -269,7 +214,7 @@
                 "approval_eligible": true,
                 "candidate_id": "cand_2c8c489a2f60f030",
                 "confidence": "high",
-                "evidence_frame_seconds": 20.5,
+                "evidence_frame_seconds": 22.5,
                 "evidence_span_count": 1,
                 "intent": "explicit_change",
                 "reason_code": null,
@@ -282,7 +227,7 @@
                 "approval_eligible": true,
                 "candidate_id": "cand_481753781d347a60",
                 "confidence": "high",
-                "evidence_frame_seconds": 80.5,
+                "evidence_frame_seconds": 72.5,
                 "evidence_span_count": 2,
                 "intent": "explicit_problem",
                 "reason_code": null,
@@ -294,8 +239,8 @@
               {
                 "approval_eligible": false,
                 "candidate_id": "cand_f246c26704fabaae",
-                "confidence": "high",
-                "evidence_frame_seconds": 160.5,
+                "confidence": "medium",
+                "evidence_frame_seconds": 149.5,
                 "evidence_span_count": 1,
                 "intent": "ambiguous_reaction",
                 "reason_code": null,
@@ -308,7 +253,7 @@
                 "approval_eligible": false,
                 "candidate_id": "cand_9752fd020e6a3390",
                 "confidence": "high",
-                "evidence_frame_seconds": 270.5,
+                "evidence_frame_seconds": 252.5,
                 "evidence_span_count": 1,
                 "intent": "question",
                 "reason_code": "question_not_request",
@@ -320,8 +265,8 @@
               {
                 "approval_eligible": false,
                 "candidate_id": "cand_191f3b4d6d46effb",
-                "confidence": "high",
-                "evidence_frame_seconds": 320.5,
+                "confidence": "medium",
+                "evidence_frame_seconds": 321.5,
                 "evidence_span_count": 1,
                 "intent": "none",
                 "reason_code": null,
@@ -334,51 +279,51 @@
             "schema_version": "1.0"
           },
           "processing_pair_count": 2,
-          "started_at": "2026-09-19T01:52:08.981614+00:00",
+          "started_at": "2026-09-19T03:37:11.236959+00:00",
           "status": "verified"
         },
         {
           "analysis": {
-            "observation_count": 1,
+            "observation_count": 6,
             "schema_version": "1.0"
           },
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-          "completed_at": "2026-09-19T01:52:08.985178+00:00",
-          "epoch_fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
+          "completed_at": "2026-09-20T04:18:24.555370+00:00",
+          "epoch_fingerprint": "77b0426245749b8c7319b14c7445dff7f7ce5b7b003049f99fa25a5afa9f33c3",
           "evidence_frames": [
             {
               "candidate_id": "cand_2c8c489a2f60f030",
               "path": "evidence-frames/cand_2c8c489a2f60f030.png",
               "status": "extracted",
-              "timestamp_seconds": 20.5
+              "timestamp_seconds": 22.5
             },
             {
               "candidate_id": "cand_481753781d347a60",
               "path": "evidence-frames/cand_481753781d347a60.png",
               "status": "extracted",
-              "timestamp_seconds": 80.5
+              "timestamp_seconds": 72.5
             },
             {
               "candidate_id": "cand_191f3b4d6d46effb",
               "path": "evidence-frames/cand_191f3b4d6d46effb.png",
               "status": "extracted",
-              "timestamp_seconds": 320.5
+              "timestamp_seconds": 321.0
             }
           ],
           "gemini_usage": {
-            "total_token_count": 18
+            "total_tokens": 52631
           },
           "interaction_verified": true,
           "measurements": {
-            "active_human_seconds": 2.0,
-            "active_review_seconds": 2.0,
-            "analysis_seconds": 2.0,
+            "active_human_seconds": 246.3679180449999,
+            "active_review_seconds": 246.38400063599966,
+            "analysis_seconds": 47.33721150400015,
             "external_write_count": 3.0,
-            "frame_seconds": 1.0,
+            "frame_seconds": 0.3873094939999646,
             "semantic_score_passed": 1.0,
-            "upload_seconds": 1.0,
-            "wall_clock_seconds": 3.0,
-            "write_seconds": 1.0
+            "upload_seconds": 18.721333681000033,
+            "wall_clock_seconds": 319.7286368680002,
+            "write_seconds": 3.7299864689998685
           },
           "policy_result": {
             "result_count": 5,
@@ -387,7 +332,7 @@
                 "approval_eligible": true,
                 "candidate_id": "cand_2c8c489a2f60f030",
                 "confidence": "high",
-                "evidence_frame_seconds": 20.5,
+                "evidence_frame_seconds": 22.5,
                 "evidence_span_count": 1,
                 "intent": "explicit_change",
                 "reason_code": null,
@@ -400,7 +345,7 @@
                 "approval_eligible": true,
                 "candidate_id": "cand_481753781d347a60",
                 "confidence": "high",
-                "evidence_frame_seconds": 80.5,
+                "evidence_frame_seconds": 72.5,
                 "evidence_span_count": 2,
                 "intent": "explicit_problem",
                 "reason_code": null,
@@ -412,8 +357,8 @@
               {
                 "approval_eligible": false,
                 "candidate_id": "cand_f246c26704fabaae",
-                "confidence": "high",
-                "evidence_frame_seconds": 160.5,
+                "confidence": "medium",
+                "evidence_frame_seconds": 150.0,
                 "evidence_span_count": 1,
                 "intent": "ambiguous_reaction",
                 "reason_code": null,
@@ -426,7 +371,7 @@
                 "approval_eligible": false,
                 "candidate_id": "cand_9752fd020e6a3390",
                 "confidence": "high",
-                "evidence_frame_seconds": 270.5,
+                "evidence_frame_seconds": 252.5,
                 "evidence_span_count": 1,
                 "intent": "question",
                 "reason_code": "question_not_request",
@@ -438,8 +383,8 @@
               {
                 "approval_eligible": false,
                 "candidate_id": "cand_191f3b4d6d46effb",
-                "confidence": "high",
-                "evidence_frame_seconds": 320.5,
+                "confidence": "medium",
+                "evidence_frame_seconds": 321.0,
                 "evidence_span_count": 1,
                 "intent": "none",
                 "reason_code": null,
@@ -452,148 +397,198 @@
             "schema_version": "1.0"
           },
           "processing_pair_count": 2,
-          "started_at": "2026-09-19T01:52:08.984388+00:00",
+          "started_at": "2026-09-20T04:17:18.193974+00:00",
           "status": "verified"
         }
       ],
       "conflict_resolutions": [],
       "current": true,
       "declines": [],
-      "fingerprint": "82d3b7ecbfca2c4bd61379aed5efb583485318166818ebbd008c9112b30a9853",
+      "fingerprint": "77b0426245749b8c7319b14c7445dff7f7ce5b7b003049f99fa25a5afa9f33c3",
       "fingerprint_inputs": {
+        "context": "14c94069f3fa05b4d29bb0764bef92d6f7f43beb47fb126402392a50e2ea5beb",
+        "dependency": "c9b971ee5dac94856dff01420c39e9d995bc8ef67d2289f6be9e8796d030787f",
+        "fixture_version": "canonical-six-case-v3",
+        "ground_truth": "68ab068709ebf7b1bc4918b77f9157aae6738b8471fb9ec8e2a1a0b01762f7f4",
+        "implementation": "0d6515c1162388953a64750c75de7ad197d20e1d06c513dc8a18bce01f166654",
         "model": "gemini-3.5-flash-lite",
-        "request_trust": "stream=True; store=True; persist interaction.created; retrieve exact ID; require completed and matched processing pairs",
+        "policy": "f903cb795443cbd27a0b9b8206051d8c48a4695a110cd539f60102f591d8fc6d",
+        "prompt": "8a80098d4cc5c2d0d859f7b3aa866a89c521340122c8d2191d864635ae9545e2",
+        "schema": "266d4e003fd10d519da53010ced93fc878063c65349eb18ad5afa4ca9aff6124",
         "source": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
       },
       "issue_records": [
         {
           "candidate_id": "cand_2c8c489a2f60f030",
-          "destination_repository": "demo/feedback",
-          "html_url": "https://example.test/issues/1",
-          "issue_number": 1,
+          "destination_repository": "heykay-47/crework-feedback-demo",
+          "html_url": "https://github.com/heykay-47/crework-feedback-demo/issues/4",
+          "issue_number": 4,
           "marker": "<!-- crework:v1 source_sha256=f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc candidate_id=cand_2c8c489a2f60f030 -->",
-          "payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff",
-          "recorded_at": "2026-09-19T01:52:08.992934+00:00"
+          "payload_hash": "398234b0ab18b305a6dc3b9c2fb4a380bd074ad376baf4a41d78d8701d29267d",
+          "recorded_at": "2026-09-20T04:22:33.130420+00:00"
         },
         {
           "candidate_id": "cand_481753781d347a60",
-          "destination_repository": "demo/feedback",
-          "html_url": "https://example.test/issues/2",
-          "issue_number": 2,
+          "destination_repository": "heykay-47/crework-feedback-demo",
+          "html_url": "https://github.com/heykay-47/crework-feedback-demo/issues/5",
+          "issue_number": 5,
           "marker": "<!-- crework:v1 source_sha256=f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc candidate_id=cand_481753781d347a60 -->",
-          "payload_hash": "83b2baae9a2c2c7d20fe9577872a6551d41a58de584b7a70bcb4211314d60857",
-          "recorded_at": "2026-09-19T01:52:08.995391+00:00"
+          "payload_hash": "da9f00759dfeb99f3322bdaa867cdfefe279e83980feba6c7bf154f63d40bdf1",
+          "recorded_at": "2026-09-20T04:22:34.278936+00:00"
         },
         {
           "candidate_id": "cand_191f3b4d6d46effb",
-          "destination_repository": "demo/feedback",
-          "html_url": "https://example.test/issues/3",
-          "issue_number": 3,
+          "destination_repository": "heykay-47/crework-feedback-demo",
+          "html_url": "https://github.com/heykay-47/crework-feedback-demo/issues/6",
+          "issue_number": 6,
           "marker": "<!-- crework:v1 source_sha256=f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc candidate_id=cand_191f3b4d6d46effb -->",
-          "payload_hash": "4913a413b598415a2e4b136933d3f2382f9c5be52de5806de9dd7f9bdaf632c5",
-          "recorded_at": "2026-09-19T01:52:08.997681+00:00"
+          "payload_hash": "e61bd0ab74c94eff7f5a37ede865f17f77a6bdb0b454e7f1958a58f86b2efcc4",
+          "recorded_at": "2026-09-20T04:22:35.621804+00:00"
         }
       ],
       "reconciliation_errors": [],
       "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc",
       "write_attempts": [
         {
-          "attempt_id": "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_2c8c489a2f60f030",
           "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "7b54a19394e29ed456b54e4df3dd74e6d64cc369abb7e52a42ddcbc22bcfd920",
-          "destination_repository": "demo/feedback",
+          "candidate_snapshot_hash": "97b5df44f7a923202a977eed0e57d59f1cfaa2aa3d32dfe6d68ad16822209d68",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "issue_number": null,
           "issue_url": null,
-          "payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff",
+          "payload_hash": "398234b0ab18b305a6dc3b9c2fb4a380bd074ad376baf4a41d78d8701d29267d",
           "state": "write_pending",
-          "write_id": "67749f97-6d68-4842-9f96-447f1ccaa5e2"
+          "write_id": "c8f3b33e-1c5a-4d11-9892-6f19eb4abe28"
         },
         {
-          "attempt_id": "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_2c8c489a2f60f030",
           "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "7b54a19394e29ed456b54e4df3dd74e6d64cc369abb7e52a42ddcbc22bcfd920",
-          "destination_repository": "demo/feedback",
+          "candidate_snapshot_hash": "97b5df44f7a923202a977eed0e57d59f1cfaa2aa3d32dfe6d68ad16822209d68",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "issue_number": null,
           "issue_url": null,
-          "payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff",
-          "state": "write_uncertain",
-          "write_id": "67749f97-6d68-4842-9f96-447f1ccaa5e2"
-        },
-        {
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-          "candidate_id": "cand_2c8c489a2f60f030",
-          "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "7b54a19394e29ed456b54e4df3dd74e6d64cc369abb7e52a42ddcbc22bcfd920",
-          "destination_repository": "demo/feedback",
-          "issue_number": null,
-          "issue_url": null,
-          "payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff",
-          "state": "write_pending",
-          "write_id": "588bae13-ef60-48f2-ab93-040be9a24355"
-        },
-        {
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-          "candidate_id": "cand_2c8c489a2f60f030",
-          "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "7b54a19394e29ed456b54e4df3dd74e6d64cc369abb7e52a42ddcbc22bcfd920",
-          "destination_repository": "demo/feedback",
-          "issue_number": null,
-          "issue_url": null,
-          "payload_hash": "74e77466f3f45eb0214fb5a84cf6e446e079362a341cf6c9d7952325ffd25eff",
+          "payload_hash": "398234b0ab18b305a6dc3b9c2fb4a380bd074ad376baf4a41d78d8701d29267d",
           "state": "written",
-          "write_id": "588bae13-ef60-48f2-ab93-040be9a24355"
+          "write_id": "c8f3b33e-1c5a-4d11-9892-6f19eb4abe28"
         },
         {
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_481753781d347a60",
           "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "4b8492d4e97c3fb2331d1efb18db59a55dcc219362c36f626fc926d4d12a9795",
-          "destination_repository": "demo/feedback",
+          "candidate_snapshot_hash": "ca58d7faada9f83c0bdeb86372d2855853b8338bcbd693fc19067ac8df9b09ed",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "issue_number": null,
           "issue_url": null,
-          "payload_hash": "83b2baae9a2c2c7d20fe9577872a6551d41a58de584b7a70bcb4211314d60857",
+          "payload_hash": "da9f00759dfeb99f3322bdaa867cdfefe279e83980feba6c7bf154f63d40bdf1",
           "state": "write_pending",
-          "write_id": "fff5242c-7965-4f82-bb81-84743e445472"
+          "write_id": "d04f8763-2462-4dfd-93d6-d0c7c5a180ca"
         },
         {
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_481753781d347a60",
           "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "4b8492d4e97c3fb2331d1efb18db59a55dcc219362c36f626fc926d4d12a9795",
-          "destination_repository": "demo/feedback",
+          "candidate_snapshot_hash": "ca58d7faada9f83c0bdeb86372d2855853b8338bcbd693fc19067ac8df9b09ed",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "issue_number": null,
           "issue_url": null,
-          "payload_hash": "83b2baae9a2c2c7d20fe9577872a6551d41a58de584b7a70bcb4211314d60857",
+          "payload_hash": "da9f00759dfeb99f3322bdaa867cdfefe279e83980feba6c7bf154f63d40bdf1",
           "state": "written",
-          "write_id": "fff5242c-7965-4f82-bb81-84743e445472"
+          "write_id": "d04f8763-2462-4dfd-93d6-d0c7c5a180ca"
         },
         {
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_191f3b4d6d46effb",
           "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "56c787d7dce940ca59e716f206d6e3ae3c3bde70833cb11c339e36fa6ef53404",
-          "destination_repository": "demo/feedback",
+          "candidate_snapshot_hash": "ce003ba1d401db54a134d0964c80ea0db3f4eb994bc269b5236524d9e6c94eef",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "issue_number": null,
           "issue_url": null,
-          "payload_hash": "4913a413b598415a2e4b136933d3f2382f9c5be52de5806de9dd7f9bdaf632c5",
+          "payload_hash": "e61bd0ab74c94eff7f5a37ede865f17f77a6bdb0b454e7f1958a58f86b2efcc4",
           "state": "write_pending",
-          "write_id": "74b3680d-d923-474f-a285-b4d17183019d"
+          "write_id": "6ba628cc-ceb7-45bc-a5b9-7e1d26dbdcfe"
         },
         {
-          "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+          "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
           "candidate_id": "cand_191f3b4d6d46effb",
           "candidate_payload_hash": null,
-          "candidate_snapshot_hash": "56c787d7dce940ca59e716f206d6e3ae3c3bde70833cb11c339e36fa6ef53404",
-          "destination_repository": "demo/feedback",
+          "candidate_snapshot_hash": "ce003ba1d401db54a134d0964c80ea0db3f4eb994bc269b5236524d9e6c94eef",
+          "destination_repository": "heykay-47/crework-feedback-demo",
           "issue_number": null,
           "issue_url": null,
-          "payload_hash": "4913a413b598415a2e4b136933d3f2382f9c5be52de5806de9dd7f9bdaf632c5",
+          "payload_hash": "e61bd0ab74c94eff7f5a37ede865f17f77a6bdb0b454e7f1958a58f86b2efcc4",
           "state": "written",
-          "write_id": "74b3680d-d923-474f-a285-b4d17183019d"
+          "write_id": "6ba628cc-ceb7-45bc-a5b9-7e1d26dbdcfe"
         }
       ]
+    },
+    {
+      "approvals": [],
+      "attempts": [
+        {
+          "analysis": {
+            "observation_count": 0,
+            "schema_version": null
+          },
+          "attempt_id": "d41934bf-60cf-4e62-9c50-c72dcea1ee19",
+          "completed_at": "2026-09-20T05:05:30.773500+00:00",
+          "epoch_fingerprint": "ab9b144ee1d5a3cd756fb5d30825590f1d346a082afae020e6ddca7c1b633701",
+          "evidence_frames": [],
+          "failure_code": "background_rejected",
+          "gemini_usage": {},
+          "interaction_verified": false,
+          "measurements": {
+            "external_write_count": 0,
+            "wall_seconds": 16.161515257000246
+          },
+          "policy_result": null,
+          "processing_pair_count": 0,
+          "started_at": "2026-09-20T05:05:14.612998+00:00",
+          "status": "failed"
+        },
+        {
+          "analysis": {
+            "observation_count": 0,
+            "schema_version": null
+          },
+          "attempt_id": "4998e63f-78e8-45d8-a4ed-7972abf081dc",
+          "completed_at": "2026-09-20T05:05:30.773820+00:00",
+          "epoch_fingerprint": "ab9b144ee1d5a3cd756fb5d30825590f1d346a082afae020e6ddca7c1b633701",
+          "evidence_frames": [],
+          "failure_code": "processing_unverified",
+          "gemini_usage": {},
+          "interaction_verified": false,
+          "measurements": {
+            "external_write_count": 0
+          },
+          "policy_result": null,
+          "processing_pair_count": 0,
+          "started_at": "2026-09-20T05:05:30.773623+00:00",
+          "status": "failed"
+        }
+      ],
+      "conflict_resolutions": [],
+      "current": false,
+      "declines": [],
+      "fingerprint": "ab9b144ee1d5a3cd756fb5d30825590f1d346a082afae020e6ddca7c1b633701",
+      "fingerprint_inputs": {
+        "context": "14c94069f3fa05b4d29bb0764bef92d6f7f43beb47fb126402392a50e2ea5beb",
+        "dependency": "c9b971ee5dac94856dff01420c39e9d995bc8ef67d2289f6be9e8796d030787f",
+        "fixture_version": "canonical-six-case-v3",
+        "ground_truth": "68ab068709ebf7b1bc4918b77f9157aae6738b8471fb9ec8e2a1a0b01762f7f4",
+        "implementation": "0d6515c1162388953a64750c75de7ad197d20e1d06c513dc8a18bce01f166654",
+        "model": "gemini-3.5-flash-lite",
+        "policy": "f903cb795443cbd27a0b9b8206051d8c48a4695a110cd539f60102f591d8fc6d",
+        "prompt": "8a80098d4cc5c2d0d859f7b3aa866a89c521340122c8d2191d864635ae9545e2",
+        "proof_incident_epoch": "sha256:1740cfa60476f9f9194dbf8f7db6609187aeeb9f48a32b598a34fb4338caaa45",
+        "schema": "266d4e003fd10d519da53010ced93fc878063c65349eb18ad5afa4ca9aff6124",
+        "source": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+      },
+      "issue_records": [],
+      "reconciliation_errors": [],
+      "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc",
+      "write_attempts": []
     }
   ],
   "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc",

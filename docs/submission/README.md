@@ -16,17 +16,18 @@ the separately embeddable GIF referenced there.
 - `proof-bundle/images/` — the fixed nine-image sequence.
 - `proof-bundle/evidence-frames/` — final run frames extracted from the owned
   synthetic recording.
-- `proof-bundle/media/third-run.gif` — validated 24.01-second GIF.
+- `proof-bundle/media/third-run.gif` — validated 26.16-second edited recording
+  with the command and removed-wait labels visible in the media itself.
 - `proof-bundle/media/third-run-timeline.json` — four ordered third-run events
   and removed waits.
-- `proof-bundle/incidents/` — rejected background, incomplete-analysis and
-  uncertain-write zero-write incidents, with sanitized evidence metadata.
+- `proof-bundle/incidents/` — real rejected-background and controlled
+  incomplete-analysis zero-write incidents, with sanitized evidence metadata.
 - `third-run.gif` — copy of the bundle GIF for direct embedding in the
   reviewer-facing write-up.
 
-The bundle is intentionally labeled deterministic acceptance-harness evidence:
-the Issue Records target `demo/feedback` with `example.test` URLs and are not
-live external writes.
+The bundle contains three live Gemini analyses and three verified public demo
+Issue Records for `heykay-47/crework-feedback-demo`. The deterministic report
+scores the persisted live result against authored fixture ground truth.
 
 ## Rebuilding the checked-in package
 
@@ -37,7 +38,17 @@ proof builder using:
 .venv/bin/python scripts/build-public-proof.py
 ```
 
-The helper creates presentation cards and real fixture frames, then calls the
-same `build_proof_package()` contract used by the CLI. It never calls Gemini or
-GitHub. Rebuilding replaces the checked-in bundle, so review the resulting
-diff before committing regenerated assets.
+The helper derives presentation images from persisted live measurements,
+copies the captured GitHub page, renders the authentic asciinema recording,
+and calls the same `build_proof_package()` contract used by the CLI. It never
+calls Gemini or GitHub. Rebuilding replaces the checked-in bundle, so review
+the resulting diff before committing regenerated assets.
+
+Before rebuilding, the real background-rejection epoch can be captured once.
+The command defaults to a local request-shape dry run; `--execute-background`
+performs the documented live probe and requires `GEMINI_API_KEY`:
+
+```bash
+.venv/bin/python scripts/capture-proof-incidents.py
+.venv/bin/python scripts/capture-proof-incidents.py --execute-background
+```

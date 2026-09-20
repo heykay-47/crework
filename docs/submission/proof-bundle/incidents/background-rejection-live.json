@@ -1,0 +1,10 @@
+{
+  "attempt_id": "d41934bf-60cf-4e62-9c50-c72dcea1ee19",
+  "evidence_artifact_id": "artifact_014",
+  "external_write_count": 0,
+  "incident_id": "background-rejection-live",
+  "kind": "background_interaction_rejection",
+  "observed_code": "background_rejected",
+  "observed_status": "rejected",
+  "summary": "Persisted background interaction rejection proof for attempt d41934bf-60cf-4e62-9c50-c72dcea1ee19."
+}

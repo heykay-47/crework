@@ -1218,19 +1218,19 @@ def build_proof_package(
                 except (OSError, UnicodeDecodeError) as error:
                     raise ProofPackageError("incident evidence text is not valid UTF-8") from error
                 if source.suffix.casefold() == ".json":
-                    _sanitize_public_json(raw_text, label="incident evidence")
+                    public_evidence = _sanitize_public_json(raw_text, label="incident evidence") + "\n"
                 else:
                     _sanitize_public_text(raw_text, label="incident evidence")
-                public_evidence = json.dumps(
-                    {
-                        "format": "sanitized-text-evidence",
-                        "source_artifact_sha256": _sha256_bytes(raw_text.encode("utf-8")),
-                        "incident_id": safe_incident.incident_id,
-                        "attempt_id": safe_incident.attempt_id,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
+                    public_evidence = json.dumps(
+                        {
+                            "format": "sanitized-text-evidence",
+                            "source_artifact_sha256": _sha256_bytes(raw_text.encode("utf-8")),
+                            "incident_id": safe_incident.incident_id,
+                            "attempt_id": safe_incident.attempt_id,
+                        },
+                        indent=2,
+                        sort_keys=True,
+                    )
                 evidence_artifact = _write_artifact(
                     stage,
                     evidence_relative,
@@ -1371,31 +1371,26 @@ def build_proof_package(
         zero_write_incidents = tuple(
             item for item in public_incidents if item.kind in {"incomplete_analysis", "uncertain_write"}
         )
-        request_contract = _safe_fingerprint_inputs(ledger).get("request_trust")
-        trust_claims: tuple[ProofClaim, ...] = ()
-        if request_contract is not None:
-            verified_attempts = [attempt for attempt in ledger.attempts if attempt.get("status") == "verified"]
-            final_safe_attempt = _safe_attempt(
-                final_attempt,
-                fingerprint=ledger.analysis_fingerprint,
-                frame_paths={},
-            )
-            trust_claims = (
-                claim(
-                    "claim_request_trust",
-                    "The acceptance attempts preserve the stored-stream trust contract and usage evidence.",
-                    "fingerprint_inputs.request_trust plus verified attempt interaction/pair/usage fields",
-                    "stream=True, store=True; exact stored interaction; completed; matched pairs; usage recorded",
-                    (
-                        f"{request_contract}; {len(verified_attempts)} verified attempts; "
-                        f"final interaction_verified={final_safe_attempt['interaction_verified']}; "
-                        f"processing pairs={final_safe_attempt['processing_pair_count']}; "
-                        f"usage={final_safe_attempt['gemini_usage']}"
-                    ),
-                    (image_slots[2].artifact_id, ledger_artifact_id),
-                    acceptance.qualified_attempt_ids,
+        attempts_by_id = _attempt_by_id(ledger)
+        qualified_safe_attempts = tuple(
+            _safe_attempt(attempts_by_id[attempt_id], fingerprint=ledger.analysis_fingerprint, frame_paths={})
+            for attempt_id in acceptance.qualified_attempt_ids
+        )
+        trust_claims = (
+            claim(
+                "claim_request_trust",
+                "All qualifying live attempts passed the exact-interaction completion, processing-pair and usage trust gate.",
+                "_has_verified_analysis_proof for every AcceptanceRecord.qualified_attempt_id",
+                "verified status; exact interaction ID persisted; completed retrieval; processing pairs; usage and timings",
+                (
+                    f"{sum(item['interaction_verified'] is True for item in qualified_safe_attempts)}/"
+                    f"{len(qualified_safe_attempts)} interaction_verified; processing pairs "
+                    f"{[item['processing_pair_count'] for item in qualified_safe_attempts]}; usage recorded for every attempt"
                 ),
-            )
+                (image_slots[2].artifact_id, ledger_artifact_id),
+                acceptance.qualified_attempt_ids,
+            ),
+        )
         claim_index = (
             claim(
                 "claim_acceptance",
@@ -1454,7 +1449,7 @@ def build_proof_package(
             ),
             claim(
                 "claim_zero_unsafe_writes",
-                "Injected incomplete and uncertain cases demonstrate zero unsafe writes.",
+                "Persisted incomplete or uncertain safety incidents demonstrate zero unsafe writes.",
                 "incident.external_write_count == 0",
                 "zero external writes",
                 "; ".join(

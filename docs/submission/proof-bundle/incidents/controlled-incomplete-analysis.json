@@ -1,0 +1,10 @@
+{
+  "attempt_id": "4998e63f-78e8-45d8-a4ed-7972abf081dc",
+  "evidence_artifact_id": "artifact_015",
+  "external_write_count": 0,
+  "incident_id": "controlled-incomplete-analysis",
+  "kind": "incomplete_analysis",
+  "observed_code": "processing_unverified",
+  "observed_status": "failed",
+  "summary": "Persisted incomplete analysis proof for attempt 4998e63f-78e8-45d8-a4ed-7972abf081dc."
+}

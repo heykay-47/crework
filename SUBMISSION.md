@@ -7,14 +7,13 @@ screen recording into timestamped, policy-routed work candidates. It keeps
 uncertainty visible, requires human approval before external writes, and leaves
 an atomic Run Ledger.
 
-**Important evidence boundary:** the checked-in proof package is a reproducible
-deterministic acceptance-harness package. Its three qualifying analyses and
-three `demo/feedback` Issue Records use the repository's fake gateways and
-`example.test` URLs. They are not three live Gemini bills or live GitHub
-Issues. The package deliberately makes no external write. The one live smoke
-result is kept separate from the acceptance claim: it verified one real
-`gemini-3.5-flash-lite` analysis, but it is not presented as a three-run
-benchmark.
+**Evidence boundary:** the checked-in proof package was built from three fresh
+live `gemini-3.5-flash-lite` analyses of one owned synthetic fixture. The third
+run created three approved Issues in the dedicated public demo repository
+[`heykay-47/crework-feedback-demo`](https://github.com/heykay-47/crework-feedback-demo/issues).
+The deterministic scorer validates those live results against authored ground
+truth; it is not a substitute gateway. The package step itself remains
+read-only and performs no Gemini or GitHub call.
 
 ## 1. Capability matched to an operational pain
 
@@ -39,7 +38,7 @@ For a 50–300-person agency or product team, a client recording mixes bugs,
 copy changes, questions, decisions, vague reactions, duplicate mentions and
 visual behavior that is never stated precisely. A PM, account manager,
 designer or engineer must watch the whole recording, understand speech and UI
-state, find timestamps, deduplicate, write tickets and ask for clarification.
+state, find timestamps, deduplicate, write Issues and ask for clarification.
 That translation work delays the feedback-to-execution loop.
 
 ### Why both spoken and visual context matter
@@ -56,7 +55,7 @@ spoken intent + visible UI state + timestamp
 ```
 
 This workflow therefore stores client quotes and visual observations as
-separate evidence, rather than treating a transcript summary as a ticket.
+separate evidence, rather than treating a transcript summary as a Candidate.
 
 ## 2. Compact architecture and guarded workflow
 
@@ -125,8 +124,8 @@ The fixture is the owned synthetic `canonical-six-case-v3` recording:
 [fixture manifest](docs/submission/proof-bundle/images/02-fixture-manifest.png),
 [deterministic report](docs/submission/proof-bundle/deterministic-report.json),
 and [sanitized ledger](docs/submission/proof-bundle/ledger.json). “Run 1–3”
-below means the three qualifying deterministic acceptance-harness attempts. It
-does **not** claim three independent live Gemini calls.
+below means the three qualifying live Gemini analyses persisted by the exact
+acceptance sequence.
 
 | Case | Expected route | Run 1 observed | Run 2 observed | Run 3 observed |
 |---|---|---|---|---|
@@ -173,8 +172,8 @@ links each proof claim to its artifact and check.
   against persisted Issue Records. Existing exact matches are adopted; a lost
   or ambiguous response is `write_uncertain`, not an automatic retry.
 - **Fail closed:** failed, incomplete or uncertain work produces zero external
-  writes. The [background rejection incident](docs/submission/proof-bundle/incidents/background-rejection.json)
-  and [incomplete-analysis incident](docs/submission/proof-bundle/incidents/incomplete-analysis.json)
+  writes. The [background rejection incident](docs/submission/proof-bundle/incidents/background-rejection-live.json)
+  and [incomplete-analysis incident](docs/submission/proof-bundle/incidents/controlled-incomplete-analysis.json)
   both show `external_write_count: 0`.
 - **Proof is read-only:** packaging copies allowlisted, sanitized state into a
   new immutable bundle; it performs no model call, approval prompt or remote
@@ -185,9 +184,12 @@ links each proof claim to its artifact and check.
 The tested fallback is the implemented `stream=True, store=True` path. It
 persists the ID from `interaction.created`, retrieves the stored interaction,
 requires completion and verifies the processing pairs before accepting output.
-The background interaction test is intentionally visible as a rejection, not
-silently described as supported. See the [request/trust image](docs/submission/proof-bundle/images/03-request-trust.png)
-and [background incident](docs/submission/proof-bundle/incidents/background-rejection.json).
+All three live acceptance attempts passed this exact gate; see the
+[request-trust claim](docs/submission/proof-bundle/claim-index.json) for the
+`3/3 interaction_verified` executable result. The separate live background
+interaction attempt is intentionally visible as a rejection, not silently
+described as supported. See the [request/trust image](docs/submission/proof-bundle/images/03-request-trust.png)
+and [background incident](docs/submission/proof-bundle/incidents/background-rejection-live.json).
 
 ## 5. Measurements and Gemini usage
 
@@ -196,25 +198,24 @@ model benchmark.
 
 | Measurement | Visible observed value | Provenance |
 |---|---:|---|
-| Manual baseline: watch | 360 s | acceptance baseline record |
-| Manual baseline: issue writing | 120 s | acceptance baseline record |
-| Manual baseline: active human time | 480 s | acceptance baseline record |
-| Each acceptance analysis: upload | 1 s | sanitized Run Ledger |
-| Each acceptance analysis: Gemini analysis | 2 s | sanitized Run Ledger |
-| Each acceptance analysis: wall clock | 3 s | sanitized Run Ledger |
-| Final run: Evidence Frame extraction | 1 s | sanitized Run Ledger |
-| Final run: active review | 2 s | sanitized Run Ledger |
-| Final run: active human | 2 s | sanitized Run Ledger |
-| Final run: write stage | 1 s | sanitized Run Ledger |
-| Acceptance-harness usage per attempt | `total_token_count: 18` | sanitized Run Ledger |
+| Manual baseline: watch | 354.00 s | acceptance baseline record |
+| Manual baseline: Issue writing | 778.00 s | acceptance baseline record |
+| Manual baseline: active human time | 1132.00 s | acceptance baseline record |
+| Run 1: upload / Gemini analysis / wall | 18.57 / 32.35 / 51.60 s | sanitized Run Ledger |
+| Run 2: upload / Gemini analysis / wall | 18.50 / 21.80 / 40.76 s | sanitized Run Ledger |
+| Run 3: upload / Gemini analysis / wall | 18.72 / 47.34 / 319.73 s | sanitized Run Ledger |
+| Final run: Evidence Frame extraction | 0.39 s | sanitized Run Ledger |
+| Final run: active review / active human | 246.38 / 246.37 s | sanitized Run Ledger |
+| Final run: write stage | 3.73 s | sanitized Run Ledger |
+| Live Gemini usage, Runs 1 / 2 / 3 | 33,733 / 52,577 / 52,631 total tokens | sanitized Run Ledger |
 
-The three acceptance records therefore contain 54 fixture-counted tokens in
-aggregate. This is a deterministic gateway value used to prove persistence
-and reporting, **not** a live API invoice or a claim about Gemini efficiency.
-The bundle's sanitized fingerprint inputs preserve the stored-stream trust
-contract alongside each attempt's `interaction_verified`, processing-pair and
-usage fields; see the [request-trust claim](docs/submission/proof-bundle/claim-index.json)
-and [ledger](docs/submission/proof-bundle/ledger.json). No paid-tier
+The three live acceptance records contain 138,941 reported tokens in aggregate.
+These are persisted API usage observations, not a model-efficiency benchmark or
+invoice reconstruction.
+The bundle's sanitized ledger preserves each attempt's `interaction_verified`,
+processing-pair and usage fields; see the
+[acceptance claim](docs/submission/proof-bundle/claim-index.json) and
+[ledger](docs/submission/proof-bundle/ledger.json). No paid-tier
 assumption, quota guarantee or confidential key is included.
 
 ## 6. Visible proof: screenshots, GIF and final records
@@ -238,7 +239,8 @@ The fixed nine-image sequence is included in the bundle and in the claim index:
 The [GIF timeline](docs/submission/proof-bundle/media/third-run-timeline.json)
 contains the four ordered events (`third-run-command`, `verified-analysis`,
 `routes-and-review`, `verified-issues`), records removed waits, and is validated
-as a 24.01-second GIF without a watcher or fabricated replay flag. It is an
+as a 26.16-second GIF without a watcher or fabricated replay flag. The command
+and measured removed-wait labels are visible in the GIF itself. It is an
 edited visual summary, not a claim that the animation itself is a live API
 watcher.
 
@@ -246,24 +248,24 @@ watcher.
 
 The [final-issues image](docs/submission/proof-bundle/images/08-final-issues.png)
 and [ledger Issue Records](docs/submission/proof-bundle/ledger.json) make the
-three accepted adapter records visible. Their `demo/feedback` destination and
-`example.test` URLs are deliberately non-live placeholders from the fake
-acceptance gateway. No external GitHub repository was supplied as a safe demo
-write destination, so this submission does not fabricate live Issue URLs.
+three accepted writes visible. They are real public Issues in the dedicated
+demo repository: [#4](https://github.com/heykay-47/crework-feedback-demo/issues/4),
+[#5](https://github.com/heykay-47/crework-feedback-demo/issues/5), and
+[#6](https://github.com/heykay-47/crework-feedback-demo/issues/6). Each has the
+exact source/Candidate marker and was retrieved and verified after creation.
 
 ## 7. Limitation, failures and inconsistent attempts
 
 - **One synthetic fixture:** all semantic expected/observed results use one
   owned six-minute MP4 with six authored cases. It contains no customer data
   and does not establish general accuracy across real recordings.
-- **Persisted non-happy-path attempts:** the package includes one rejected
-  background interaction, one incomplete analysis and one uncertain write
-  reconciliation case. Each records zero external writes; the uncertain case
-  is visible in the [incident record](docs/submission/proof-bundle/incidents/uncertain-write.json).
-- **No invented inconsistency:** the public package does not claim a live model
-  inconsistency that is not represented in its artifacts. The deterministic
-  harness is intentionally labeled as such; the separate one-run live smoke
-  result is not promoted to a three-run metric.
+- **Persisted non-happy-path attempts:** the package includes one real rejected
+  Gemini background interaction and one controlled incomplete-analysis safety
+  case. Both persist zero external writes. The controlled case is explicitly
+  labeled; it is not presented as a live model failure.
+- **No invented inconsistency:** the public package does not claim a model
+  inconsistency that is not represented in its artifacts. All three live
+  analyses matched the authored six-case expectations.
 - **MVP boundary:** local MP4 input, one destination adapter, terminal review,
   local JSON ledger and a synthetic fixture. There is no hosted UI, watcher,
   multi-tenant service, dashboard or autonomous PM promise.
@@ -276,8 +278,9 @@ Pydantic schema validation, project context and prompt design, FFmpeg frame
 extraction, source/fingerprint identity, timestamp/duration checks,
 deterministic duplicate collapse, intent/uncertainty routes, exact-ID recovery,
 approval snapshots, marker-based reconciliation, atomic ledger writes and
-fail-closed uncertain-write handling, with the latter demonstrated by the
-claim-linked incident record.
+fail-closed uncertain-write handling. Deterministic transition tests cover
+uncertain-write recovery; the public incident records separately demonstrate
+the rejected-background and controlled-incomplete zero-write boundaries.
 
 A no-code tool could call a video model or create an Issue. The claim here is
 not that no-code tools are categorically incapable; it is that the visible
@@ -315,16 +318,16 @@ read-only sanitized proof package.
 
 ## Final reviewer pass
 
-**PASS — visible-evidence review, 2026-09-19.** This pass used only this
+**PASS — visible-evidence review, 2026-09-20.** This pass used only this
 write-up, the linked nine images, the separate GIF, the claim index, the
-deterministic report, the sanitized ledger and the three incident artifacts. It
+deterministic report, the sanitized ledger and the two claim-linked incidents. It
 did not open the source repository to substitute code review for proof.
 
 The pass confirms that the submission visibly answers: capability/date and
 pain; visual plus spoken context; architecture and guarded workflow;
 perception/interpretation/execution limits; six expected/observed routes over
-three harness attempts; safety invariants; usage and timings; stored-stream
-fallback; screenshots and GIF; synthetic-fixture and fake-gateway limits;
+three live analyses; safety invariants; usage and timings; stored-stream
+fallback; screenshots and GIF; synthetic-fixture and demo-repository limits;
 tested failures; no-code differentiation; MVP/production boundary;
 alternatives; and the absence of invented ROI, benchmarks, paid-tier claims,
 secrets or confidential data.

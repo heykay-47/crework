@@ -1,0 +1,23 @@
+{
+  "api_rejection": {
+    "api_error_module": "google.genai._gaos.lib.compat_errors",
+    "api_error_type": "BadRequestError",
+    "http_status": 400,
+    "matched_rejection_terms": [
+      "background",
+      "http_client_error"
+    ],
+    "message_sha256": "1c85e5c8dccfeace2faa656d8e7fa8141dc924d2add0bf4ba0b61cba671b537e"
+  },
+  "attempt_id": "d41934bf-60cf-4e62-9c50-c72dcea1ee19",
+  "external_write_count": 0,
+  "model": "gemini-3.5-flash-lite",
+  "note": "Sanitized evidence from a real Gemini API request; the message hash and matched terms prove classification without publishing the API body.",
+  "observed_status": "rejected",
+  "request": {
+    "background": true,
+    "processing": "agentic",
+    "store": true
+  },
+  "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+}

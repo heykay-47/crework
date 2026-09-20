@@ -1,0 +1,7 @@
+{
+  "attempt_id": "4998e63f-78e8-45d8-a4ed-7972abf081dc",
+  "external_write_count": 0,
+  "note": "Controlled incomplete-analysis safety case persisted without invoking Gemini or GitHub.",
+  "observed_status": "failed",
+  "source_sha256": "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
+}

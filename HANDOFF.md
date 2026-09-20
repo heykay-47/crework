@@ -1,12 +1,29 @@
 # HANDOFF: Crework Labs AI Engineer Intern Buildathon — Agentic Video Client Feedback Triage
 
+> **HISTORICAL PLANNING ARTIFACT — SUPERSEDED. DO NOT TREAT AS CURRENT STATE.**
+>
+> This document was written on 2026-09-16, before any code existed. It is kept
+> only as the primary source for the original research and design reasoning.
+> Every statement it makes about current state, environment, defaults or
+> pending work is obsolete.
+>
+> For current state read, in this order: `README.md` (how to build and run),
+> `CONTEXT.md` (domain language), `SUBMISSION.md` (results and evidence), and
+> closed Wayfinder map issue #1 (authoritative design addendum). Where this
+> file disagrees with any of those, they win.
+>
+> Known superseded recommendations below include the `background=True` default
+> (the shipped path is `stream=True, store=True` with exact-ID retrieval) and
+> the schema/`response_format` snippets (the shipped adapter uses nested
+> `response_format.text` with local Pydantic validation).
+
 ## Session Metadata
 
 - **Created/revised:** 2026-09-16 (Asia/Kolkata); revised after third-party review and first-party documentation cross-check
 - **Purpose:** Transfer the complete reasoning, decisions, requirements, implementation plan, testing plan, demo plan, and submission strategy from the brainstorming session into a fresh coding/AI-agent session with minimal ambiguity.
-- **Current phase:** **Research and design revised on 2026-09-16; implementation has NOT started yet.**
-- **Project/repository:** Not created/selected yet.
-- **Git branch:** N/A.
+- **Current phase when written:** research and design revised on 2026-09-16, before implementation started. Implementation has since been completed; see `README.md` and `SUBMISSION.md`.
+- **Project/repository when written:** not yet created. The repository is now `heykay-47/crework`.
+- **Git branch when written:** N/A. Work now lands on `main`.
 - **Primary assignment:** Crework Labs — AI Engineer Intern technical buildathon.
 - **Recommended working title:** **Client Feedback Triage Agent**
 - **Core concept:** Turn client screen-recording feedback into evidence-grounded, review-ready project tickets using Gemini's newly released Agentic Video Understanding capability.
@@ -28,7 +45,7 @@ This is intentionally **not** a hosted SaaS app. There should be **no custom fro
 
 The project must be built and tested with the user's own/synthetic data. **The assignment explicitly says the repository/source code will not be opened:** the write-up, screenshots and GIF must independently prove the build. Therefore the workflow must be visually easy to prove and the implementation should prioritize a clean end-to-end result over breadth.
 
-No code has been created yet. The next agent should start from **Immediate Next Steps** below.
+At the time of writing no code existed, and the next agent was told to start from **Immediate Next Steps** below. That work is now finished; the sections that follow are design history, not a task list.
 
 ---
 
@@ -1579,7 +1596,7 @@ The assignment explicitly values thought, prioritization and a working build ove
 
 # 32. Environment State
 
-No project environment has been created yet. **No Gemini API call, model output, retry, or GitHub issue creation has been executed in this handoff-review session.** All snippets are reviewed against docs, not live-tested with user credentials.
+When this section was written no project environment existed, and no Gemini API call, model output, retry, or GitHub Issue creation had been executed. All snippets were reviewed against docs rather than live-tested. The shipped container, live analyses and verified Issue writes came later; `README.md` documents the current environment.
 
 ## Required environment variable names
 

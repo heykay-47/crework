@@ -1,40 +1,44 @@
 {
   "events": [
     {
-      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "description": "Recorded third-run-command.",
+      "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
+      "description": "The recorded run command is visible before authentic terminal output.",
       "elapsed_seconds": 1.0,
       "label": "third-run-command"
     },
     {
-      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "description": "Recorded verified-analysis.",
-      "elapsed_seconds": 2.0,
+      "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
+      "description": "Verified analysis produced actionable review prompts.",
+      "elapsed_seconds": 7.0,
       "label": "verified-analysis"
     },
     {
-      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "description": "Recorded routes-and-review.",
-      "elapsed_seconds": 3.0,
+      "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
+      "description": "Candidate and Manual Review decisions were recorded.",
+      "elapsed_seconds": 13.7,
       "label": "routes-and-review"
     },
     {
-      "attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "description": "Recorded verified-issues.",
-      "elapsed_seconds": 4.0,
+      "attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
+      "description": "The recorded command ended with acceptance_passed and three Issue Records.",
+      "elapsed_seconds": 23.1,
       "label": "verified-issues"
     }
   ],
-  "final_attempt_id": "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+  "final_attempt_id": "524d164c-cac8-4333-bca3-0781a5314497",
   "recorded_run": true,
   "removed_waits": [
     {
-      "elapsed_seconds": 41.25,
-      "label": "Gemini processing - removed wait: 41.25s actual"
+      "elapsed_seconds": 70.063,
+      "label": "live Gemini analysis before first prompt - removed wait: 70.06s actual"
     },
     {
-      "elapsed_seconds": 3.5,
-      "label": "GitHub confirmation - removed wait: 3.50s actual"
+      "elapsed_seconds": 216.02,
+      "label": "operator review before first approval - removed wait: 216.02s actual"
+    },
+    {
+      "elapsed_seconds": 27.987,
+      "label": "operator review before manual confirmation - removed wait: 27.99s actual"
     }
   ],
   "replay_fabricated_output": false,

@@ -2,64 +2,63 @@
   {
     "artifact_ids": [
       "artifact_004",
-      "artifact_018"
+      "artifact_017"
     ],
     "attempt_ids": [
-      "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-      "d0ec1740-9d07-4a11-9134-de59d06582bf",
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+      "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "claim": "The frozen acceptance cycle passed with three distinct qualifying attempts.",
     "claim_id": "claim_acceptance",
     "executable_check": "AcceptanceRecord.passed and len(qualified_attempt_ids) == 3",
     "expected": "passed; exactly three distinct attempts",
-    "observed": "passed; attempts c59e77c4-8be8-403d-88ef-5f3cd7ad62cf, d0ec1740-9d07-4a11-9134-de59d06582bf, 9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
+    "observed": "passed; attempts c724a6a0-230d-4d77-b2bd-eeadd70278bb, 2007e4fa-983d-47be-bd3c-c54b0b307e36, 524d164c-cac8-4333-bca3-0781a5314497",
     "status": "passed"
   },
   {
     "artifact_ids": [
       "artifact_003",
-      "artifact_018"
+      "artifact_017"
     ],
     "attempt_ids": [
-      "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-      "d0ec1740-9d07-4a11-9134-de59d06582bf",
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+      "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
-    "claim": "The acceptance attempts preserve the stored-stream trust contract and usage evidence.",
+    "claim": "All qualifying live attempts passed the exact-interaction completion, processing-pair and usage trust gate.",
     "claim_id": "claim_request_trust",
-    "executable_check": "fingerprint_inputs.request_trust plus verified attempt interaction/pair/usage fields",
-    "expected": "stream=True, store=True; exact stored interaction; completed; matched pairs; usage recorded",
-    "observed": "stream=True; store=True; persist interaction.created; retrieve exact ID; require completed and matched processing pairs; 3 verified attempts; final interaction_verified=True; processing pairs=2; usage={'total_token_count': 18}",
+    "executable_check": "_has_verified_analysis_proof for every AcceptanceRecord.qualified_attempt_id",
+    "expected": "verified status; exact interaction ID persisted; completed retrieval; processing pairs; usage and timings",
+    "observed": "3/3 interaction_verified; processing pairs [4, 2, 2]; usage recorded for every attempt",
     "status": "passed"
   },
   {
     "artifact_ids": [
       "artifact_009",
-      "artifact_018"
+      "artifact_017"
     ],
     "attempt_ids": [
-      "0ede186c-14b7-424a-85f3-5ba16d777d66",
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
-      "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
-      "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-      "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+      "4998e63f-78e8-45d8-a4ed-7972abf081dc",
+      "524d164c-cac8-4333-bca3-0781a5314497",
+      "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+      "d41934bf-60cf-4e62-9c50-c72dcea1ee19"
     ],
     "claim": "Every settled behavior fingerprint is preserved and the current epoch is identified.",
     "claim_id": "claim_fingerprint",
     "executable_check": "RunLedger.load for current and ledger-*.json archives",
     "expected": "all settled ledgers validate and hashes are unique",
-    "observed": "1 validated fingerprint epochs",
+    "observed": "2 validated fingerprint epochs",
     "status": "passed"
   },
   {
     "artifact_ids": [
       "artifact_002",
-      "artifact_019"
+      "artifact_018"
     ],
     "attempt_ids": [
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "claim": "The final persisted policy result reproduces the deterministic fixture score.",
     "claim_id": "claim_deterministic_score",
@@ -72,10 +71,10 @@
     "artifact_ids": [
       "artifact_006",
       "artifact_007",
-      "artifact_018"
+      "artifact_017"
     ],
     "attempt_ids": [
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "claim": "The final run contains both required Evidence Frames and the reviewed routes.",
     "claim_id": "claim_evidence_and_review",
@@ -87,10 +86,10 @@
   {
     "artifact_ids": [
       "artifact_008",
-      "artifact_018"
+      "artifact_017"
     ],
     "attempt_ids": [
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "claim": "The final run has one persisted written Issue Record for every actionable route.",
     "claim_id": "claim_final_issues",
@@ -101,11 +100,11 @@
   },
   {
     "artifact_ids": [
-      "artifact_020",
+      "artifact_019",
       "artifact_014"
     ],
     "attempt_ids": [
-      "b1a3a3a7-9791-41bc-8d64-ffd4462268dd"
+      "d41934bf-60cf-4e62-9c50-c72dcea1ee19"
     ],
     "claim": "The public proof includes the recorded rejection of a background interaction request.",
     "claim_id": "claim_background_rejection",
@@ -116,20 +115,17 @@
   },
   {
     "artifact_ids": [
-      "artifact_021",
-      "artifact_015",
-      "artifact_022",
-      "artifact_016"
+      "artifact_020",
+      "artifact_015"
     ],
     "attempt_ids": [
-      "0ede186c-14b7-424a-85f3-5ba16d777d66",
-      "c368a8b5-4d64-45a3-b1ed-1712732f6b98"
+      "4998e63f-78e8-45d8-a4ed-7972abf081dc"
     ],
-    "claim": "Injected incomplete and uncertain cases demonstrate zero unsafe writes.",
+    "claim": "Persisted incomplete or uncertain safety incidents demonstrate zero unsafe writes.",
     "claim_id": "claim_zero_unsafe_writes",
     "executable_check": "incident.external_write_count == 0",
     "expected": "zero external writes",
-    "observed": "incomplete_analysis; external writes 0; uncertain_write; external writes 0",
+    "observed": "incomplete_analysis; external writes 0",
     "status": "passed"
   },
   {
@@ -145,7 +141,7 @@
       "artifact_009"
     ],
     "attempt_ids": [
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "claim": "The public proof contains the required nine-image sequence in order.",
     "claim_id": "claim_image_sequence",
@@ -157,16 +153,16 @@
   {
     "artifact_ids": [
       "artifact_010",
-      "artifact_017"
+      "artifact_016"
     ],
     "attempt_ids": [
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac"
+      "524d164c-cac8-4333-bca3-0781a5314497"
     ],
     "claim": "The edited GIF is a 20-30 second recorded-run summary, not a watcher or fabricated replay.",
     "claim_id": "claim_gif_timeline",
     "executable_check": "duration in range and GifTimeline event/flag validation",
     "expected": "20-30 seconds; four ordered events; no watcher; no fabricated replay",
-    "observed": "24.01 seconds; 4 ordered events; recorded run",
+    "observed": "26.16 seconds; 4 ordered events; recorded run",
     "status": "passed"
   },
   {
@@ -190,23 +186,20 @@
       "artifact_017",
       "artifact_018",
       "artifact_019",
-      "artifact_020",
-      "artifact_021",
-      "artifact_022"
+      "artifact_020"
     ],
     "attempt_ids": [
-      "0ede186c-14b7-424a-85f3-5ba16d777d66",
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
-      "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
-      "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-      "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+      "4998e63f-78e8-45d8-a4ed-7972abf081dc",
+      "524d164c-cac8-4333-bca3-0781a5314497",
+      "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+      "d41934bf-60cf-4e62-9c50-c72dcea1ee19"
     ],
     "claim": "Every staged public artifact passed the credential, personal-data, and private-path audit.",
     "claim_id": "claim_public_sanitization",
     "executable_check": "_audit_public_bytes applied before each artifact is written or copied",
     "expected": "no sensitive bytes in public artifacts",
-    "observed": "22 staged artifacts audited",
+    "observed": "20 staged artifacts audited",
     "status": "passed"
   },
   {
@@ -230,23 +223,20 @@
       "artifact_017",
       "artifact_018",
       "artifact_019",
-      "artifact_020",
-      "artifact_021",
-      "artifact_022"
+      "artifact_020"
     ],
     "attempt_ids": [
-      "0ede186c-14b7-424a-85f3-5ba16d777d66",
-      "9dc9afcb-83e0-4afa-8e69-cab5935de8ac",
-      "b1a3a3a7-9791-41bc-8d64-ffd4462268dd",
-      "c368a8b5-4d64-45a3-b1ed-1712732f6b98",
-      "c59e77c4-8be8-403d-88ef-5f3cd7ad62cf",
-      "d0ec1740-9d07-4a11-9134-de59d06582bf"
+      "2007e4fa-983d-47be-bd3c-c54b0b307e36",
+      "4998e63f-78e8-45d8-a4ed-7972abf081dc",
+      "524d164c-cac8-4333-bca3-0781a5314497",
+      "c724a6a0-230d-4d77-b2bd-eeadd70278bb",
+      "d41934bf-60cf-4e62-9c50-c72dcea1ee19"
     ],
     "claim": "The frozen bundle contains the required screenshots, media, reports, sanitized ledger, incidents, and claim index.",
     "claim_id": "claim_bundle_contents",
     "executable_check": "ProofPackage validation plus staged artifact inventory",
     "expected": "nine images, GIF/timeline, Evidence Frames, incidents, ledger, report, and claim index",
-    "observed": "9 images; 3 Evidence Frames; 22 pre-manifest artifacts",
+    "observed": "9 images; 3 Evidence Frames; 20 pre-manifest artifacts",
     "status": "passed"
   }
 ]
