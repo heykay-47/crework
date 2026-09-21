@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#102a43" />
+    <title>Feedback Recording review</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">CREWORK / LOCAL WORKSPACE</p>
+        <h1>Feedback Recording review</h1>
+        <p class="lede">Turn one trusted recording into reviewable, evidence-linked decisions.</p>
+      </div>
+      <button id="new-recording" class="button button-quiet" type="button">New recording</button>
+    </header>
+
+    <main id="app" class="app-shell">
+      <section id="upload-panel" class="panel upload-panel" aria-labelledby="upload-heading">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">01 / SOURCE</p>
+            <h2 id="upload-heading">Add a Feedback Recording</h2>
+          </div>
+          <span id="config-badge" class="status-badge">Checking local configuration...</span>
+        </div>
+        <label id="drop-zone" class="drop-zone" for="video-file">
+          <span class="drop-icon" aria-hidden="true">+</span>
+          <strong>Drop a video here</strong>
+          <span>or choose a file from this machine</span>
+          <span class="drop-hint">MP4, MOV, WebM, MKV, M4V, or AVI</span>
+          <input id="video-file" type="file" accept="video/*,.mkv,.avi,.m4v" />
+        </label>
+        <div class="existing-recording">
+          <label for="recording-picker">Open an existing local recording or completed Run Ledger</label>
+          <select id="recording-picker" aria-describedby="recording-picker-help">
+            <option value="">Choose a persisted recording...</option>
+          </select>
+          <span id="recording-picker-help" class="muted">Completed ledgers are opened locally without rerunning Gemini.</span>
+        </div>
+        <div id="selected-file" class="selected-file" hidden>
+          <div>
+            <strong id="file-name"></strong>
+            <span id="file-meta"></span>
+          </div>
+          <button id="remove-file" class="icon-button" type="button" aria-label="Remove selected file">x</button>
+        </div>
+        <div id="upload-error" class="inline-error" role="alert" hidden></div>
+        <div class="upload-actions">
+          <button id="upload-button" class="button button-primary" type="button" disabled>Validate recording</button>
+          <span id="upload-status" class="muted" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <section id="analysis-panel" class="panel analysis-panel" aria-labelledby="analysis-heading" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">02 / ANALYSIS</p>
+            <h2 id="analysis-heading">Verify before review</h2>
+          </div>
+          <span id="recording-status" class="status-badge" aria-live="polite">Uploaded</span>
+        </div>
+        <div class="analysis-grid">
+          <div class="video-preview-wrap">
+            <video id="preview-video" controls preload="metadata" aria-label="Feedback Recording preview"></video>
+            <div id="preview-placeholder" class="video-placeholder">Your validated recording will appear here.</div>
+          </div>
+          <div class="analysis-summary">
+            <dl class="metadata-list">
+              <div><dt>File</dt><dd id="recording-name">-</dd></div>
+              <div><dt>Media</dt><dd id="recording-media">-</dd></div>
+              <div><dt>Size</dt><dd id="recording-size">-</dd></div>
+              <div><dt>Duration</dt><dd id="recording-duration">-</dd></div>
+            </dl>
+            <button id="analyze-button" class="button button-primary button-wide" type="button">Analyze recording</button>
+            <button id="reanalyze-button" class="button button-secondary button-wide" type="button" hidden>Reanalyze as a new attempt</button>
+            <p id="reanalyze-warning" class="warning-copy" hidden>Reanalysis calls Gemini again and appends an attempt. Use it only when the stored result should be replaced.</p>
+          </div>
+        </div>
+        <ol id="stage-list" class="stage-list" aria-label="Analysis stages" aria-live="polite"></ol>
+        <div id="analysis-error" class="failure-card" role="alert" hidden></div>
+      </section>
+
+      <section id="review-panel" class="review-panel" aria-labelledby="review-heading" hidden>
+        <div class="review-heading section-heading">
+          <div>
+            <p class="eyebrow">03 / REVIEW</p>
+            <h2 id="review-heading">Evidence-linked review</h2>
+            <p id="video-summary" class="lede"></p>
+          </div>
+          <div class="review-actions">
+            <button id="publish-button" class="button button-primary" type="button" hidden>Publish approved Issues</button>
+            <span id="issue-count" class="muted"></span>
+          </div>
+        </div>
+         <div id="publish-options" class="publish-options" hidden>
+           <label><input id="retry-failed" type="checkbox" /> Retry definitive GitHub failures</label>
+           <label><input id="retry-uncertain" type="checkbox" /> Retry an uncertain write only after reconciliation</label>
+           <label id="confirm-no-issue-option" hidden><input id="confirm-no-issue" type="checkbox" /> I certify that no Issue exists for the exact marker</label>
+           <div id="canonical-options" class="canonical-options" hidden>
+             <strong>Canonical Issue selection required</strong>
+             <p>Enter the existing Issue number for each conflict. No new Issue will be created until every conflict is resolved.</p>
+             <div id="canonical-selections"></div>
+           </div>
+         </div>
+
+        <div class="review-layout">
+          <section class="review-video panel" aria-labelledby="video-heading">
+            <div class="section-heading compact">
+              <h3 id="video-heading">Recording timeline</h3>
+              <span id="timeline-duration" class="muted"></span>
+            </div>
+            <div class="video-stage">
+              <video id="review-video" controls preload="metadata" aria-label="Review video"></video>
+            </div>
+            <div id="timeline" class="timeline" aria-label="Evidence timeline">
+              <div class="timeline-axis"><span>00:00:00</span><span id="timeline-end">00:00:00</span></div>
+              <div id="timeline-track" class="timeline-track"></div>
+            </div>
+            <p class="timeline-help">Select a span or marker to seek the recording. Numeric seconds remain available in each detail.</p>
+            <details class="trust-panel">
+              <summary>Trust and processing details</summary>
+              <dl id="trust-details" class="metadata-list trust-list"></dl>
+            </details>
+          </section>
+
+          <section class="review-queue panel" aria-labelledby="queue-heading">
+            <div class="section-heading compact">
+              <h3 id="queue-heading">Review queue</h3>
+              <span id="candidate-count" class="muted"></span>
+            </div>
+            <div id="route-groups" class="route-groups"></div>
+          </section>
+
+          <section class="review-detail panel" aria-labelledby="detail-heading">
+            <div class="section-heading compact">
+              <h3 id="detail-heading">Selected result</h3>
+              <span id="detail-route" class="route-label">Select a result</span>
+            </div>
+            <div id="empty-detail" class="empty-detail">Choose a result from the queue to inspect its evidence and decision state.</div>
+            <article id="candidate-detail" hidden></article>
+          </section>
+        </div>
+      </section>
+
+      <div id="global-announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+    </main>
+
+    <dialog id="approval-dialog" class="approval-dialog" aria-labelledby="approval-dialog-title">
+      <form method="dialog" class="dialog-card">
+        <div class="section-heading compact">
+          <div>
+            <p class="eyebrow">APPROVAL PAYLOAD</p>
+            <h2 id="approval-dialog-title">Review exact Issue text</h2>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="Close Approval preview">x</button>
+        </div>
+        <p id="approval-destination" class="muted"></p>
+        <label for="approval-title">Issue title</label>
+        <input id="approval-title" readonly />
+        <label for="approval-body">Issue body</label>
+        <textarea id="approval-body" rows="12" readonly></textarea>
+        <div class="dialog-actions">
+          <button class="button button-secondary" value="cancel">Cancel</button>
+          <button id="confirm-approval" class="button button-primary" value="default">Approve and save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

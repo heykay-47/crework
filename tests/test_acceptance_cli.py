@@ -17,6 +17,7 @@ from feedback_triage.input_video import VideoInfo
 from feedback_triage.ledger import RunLedger
 from feedback_triage.models import (
     AnalysisResult,
+    analysis_to_wire,
     EvidenceSpan,
     EvidenceFrameRecord,
     Observation,
@@ -24,7 +25,7 @@ from feedback_triage.models import (
     VerifiedAnalysis,
 )
 from feedback_triage.writes import ReviewDecision
-from tests.test_completion_trust import VALID_OUTPUT
+from tests.test_completion_trust import VALID_ANALYSIS_JSON
 from tests.test_write_coordinator import candidate
 
 
@@ -77,7 +78,7 @@ def _seed_acceptance(args: Any) -> AcceptanceStore:
         fixture_version=GROUND_TRUTH.fixture_version,
         ground_truth_sha256=GROUND_TRUTH_SHA,
     )
-    analysis = AnalysisResult.model_validate_json(VALID_OUTPUT)
+    analysis = AnalysisResult.model_validate_json(VALID_ANALYSIS_JSON)
     policy = _canonical_policy()
     ledger = RunLedger.create(
         args.output,
@@ -350,7 +351,7 @@ class _GeminiInteractions:
         self.get_ids.append(id)
         return SimpleNamespace(
             status="completed",
-            output_text=self.analysis.model_dump_json(),
+            output_text=analysis_to_wire(self.analysis).model_dump_json(),
             steps=[
                 SimpleNamespace(type="processing_call", id=f"{id}-processing"),
                 SimpleNamespace(type="processing_result", call_id=f"{id}-processing"),
@@ -444,7 +445,7 @@ def test_run_rejects_an_interleaved_ledger_attempt(
     args = _args(tmp_path)
     _seed_acceptance(args)
     ledger = RunLedger.load(args.output / CANONICAL_SOURCE / "ledger.json")
-    analysis = AnalysisResult.model_validate_json(VALID_OUTPUT)
+    analysis = AnalysisResult.model_validate_json(VALID_ANALYSIS_JSON)
     interleaved = ledger.start_attempt()
     ledger.record_interaction_created(interleaved, "interleaved-interaction")
     ledger.complete(interleaved, analysis.model_dump(mode="json"), processing_pair_count=1)
@@ -471,7 +472,7 @@ def _fake_triage(
     frames_extracted: bool,
     fingerprint: str | None = None,
 ) -> tuple[VideoInfo, VerifiedAnalysis, PolicyResult, RunLedger]:
-    analysis = AnalysisResult.model_validate_json(VALID_OUTPUT)
+    analysis = AnalysisResult.model_validate_json(VALID_ANALYSIS_JSON)
     policy = _canonical_policy()
     ledger_path = output / CANONICAL_SOURCE / "ledger.json"
     ledger = RunLedger.load(ledger_path) if ledger_path.exists() else RunLedger.create(

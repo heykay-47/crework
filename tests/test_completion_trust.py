@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from feedback_triage.gemini_video import UntrustedInteraction, verify_completed_interaction
+from feedback_triage.models import parse_wire_analysis
 
 
 VALID_OUTPUT = """{
@@ -23,10 +24,12 @@ VALID_OUTPUT = """{
     "acceptance_criteria": ["CTA reads Start free trial"],
     "clarification_question": null,
     "confidence": "high",
-    "evidence": [{"start_seconds": 1.0, "end_seconds": 2.0, "client_quote": "Use Start free trial", "visual_observation": null, "keyframe_seconds": null}],
+    "evidence": [{"start_timecode": "00:00:01.000", "end_timecode": "00:00:02.000", "client_quote": "Use Start free trial", "visual_observation": null, "keyframe_timecode": null}],
     "rationale": "The request is explicit."
   }]
 }"""
+
+VALID_ANALYSIS_JSON = parse_wire_analysis(VALID_OUTPUT).model_dump_json()
 
 
 def interaction(
@@ -85,6 +88,32 @@ def test_schema_is_validated_after_completion_and_processing_proof() -> None:
         verify_completed_interaction(interaction(steps=steps, output='{"schema_version":"1.0"}'))
 
 
+def test_long_video_timecodes_are_converted_to_elapsed_seconds() -> None:
+    output = json.loads(VALID_OUTPUT)
+    evidence = output["observations"][0]["evidence"][0]
+    evidence.pop("start_seconds", None)
+    evidence.pop("end_seconds", None)
+    evidence.pop("keyframe_seconds", None)
+    evidence.update(
+        {
+            "start_timecode": "00:01:26.000",
+            "end_timecode": "00:01:40.000",
+            "keyframe_timecode": "00:01:30.500",
+        }
+    )
+    steps = [
+        SimpleNamespace(type="processing_call", id="segment-1"),
+        SimpleNamespace(type="processing_result", call_id="segment-1"),
+    ]
+
+    result = verify_completed_interaction(interaction(steps=steps, output=json.dumps(output)))
+    span = result.analysis.observations[0].evidence[0]
+
+    assert span.start_seconds == 86.0
+    assert span.end_seconds == 100.0
+    assert span.keyframe_seconds == 90.5
+
+
 def test_completed_interaction_preserves_nonnegative_usage_metadata() -> None:
     steps = [
         SimpleNamespace(type="processing_call", id="segment-1"),
@@ -115,10 +144,10 @@ def test_completed_interaction_preserves_nonnegative_usage_metadata() -> None:
     [
         (("observations", 0, "title"), "   "),
         (("observations", 0, "confidence"), "certain"),
-        (("observations", 0, "evidence", 0, "start_seconds"), float("nan")),
+        (("observations", 0, "evidence", 0, "start_timecode"), "126"),
     ],
 )
-def test_empty_required_values_invalid_enums_and_nonfinite_numbers_are_output_invalid(
+def test_empty_required_values_invalid_enums_and_timecodes_are_output_invalid(
     path: tuple[str | int, ...], value: object
 ) -> None:
     output = json.loads(VALID_OUTPUT)

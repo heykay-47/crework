@@ -111,6 +111,9 @@ def test_completed_stored_stream_becomes_verified_analysis(tmp_path: Path) -> No
     assert isinstance(interactions, FakeInteractions)
     assert interactions.create_kwargs is not None
     assert interactions.create_kwargs["response_format"]["text"]["mime_type"] == "application/json"
+    evidence_schema = interactions.create_kwargs["response_format"]["text"]["schema"]["$defs"]["EvidenceWireSpan"]
+    assert evidence_schema["properties"]["start_timecode"]["type"] == "string"
+    assert evidence_schema["properties"]["end_timecode"]["type"] == "string"
 
 
 def test_project_context_is_sent_as_background_without_replacing_the_prompt(tmp_path: Path) -> None:

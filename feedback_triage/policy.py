@@ -25,53 +25,71 @@ def _has_text(value: str | None) -> bool:
     return value is not None and bool(value.strip())
 
 
-def _normalize_evidence(span: EvidenceSpan, duration_seconds: float) -> EvidenceSpan:
+def _normalize_evidence(span: EvidenceSpan, duration_seconds: float, observation_id: str) -> EvidenceSpan:
     if span.start_seconds < 0 or span.end_seconds < span.start_seconds:
-        raise PolicyFailure("evidence timestamps must form a non-negative ordered span")
+        raise PolicyFailure(
+            f"{observation_id}: evidence span {span.start_seconds}-{span.end_seconds}s "
+            "must be non-negative and ordered"
+        )
     if span.start_seconds > duration_seconds or span.end_seconds > duration_seconds + 0.5:
-        raise PolicyFailure("evidence timestamp exceeds the Feedback Recording duration")
+        raise PolicyFailure(
+            f"{observation_id}: evidence span {span.start_seconds}-{span.end_seconds}s exceeds "
+            f"the Feedback Recording duration of {duration_seconds}s"
+        )
     normalized_end = min(span.end_seconds, duration_seconds)
     if span.keyframe_seconds is not None and not (
         span.start_seconds <= span.keyframe_seconds <= normalized_end
         and span.keyframe_seconds <= duration_seconds
     ):
-        raise PolicyFailure("evidence keyframe must fall within the normalized evidence span")
+        raise PolicyFailure(f"{observation_id}: evidence keyframe must fall within the normalized evidence span")
     return span.model_copy(update={"end_seconds": normalized_end})
+
+
+def _fail(observation: Observation, detail: str) -> PolicyFailure:
+    """Point a failed run at the one Observation and field that broke policy."""
+    return PolicyFailure(f"{observation.observation_id}: {detail}")
 
 
 def _validate_observation(observation: Observation, duration_seconds: float) -> list[EvidenceSpan]:
     if not TOPIC_KEY.fullmatch(observation.topic_key):
-        raise PolicyFailure(f"invalid topic key: {observation.topic_key}")
+        raise _fail(observation, f"invalid topic key: {observation.topic_key}")
 
     requested = _has_text(observation.requested_outcome)
     clarification = _has_text(observation.clarification_question)
     has_quote = any(_has_text(span.client_quote) for span in observation.evidence)
     has_visual = any(_has_text(span.visual_observation) for span in observation.evidence)
 
-    if observation.intent == "explicit_change" and (
-        observation.type not in {"change_request", "feature_request"} or not requested
-    ):
-        raise PolicyFailure("explicit_change requires a change type and requested outcome")
-    if observation.intent == "explicit_change" and not has_quote:
-        raise PolicyFailure("explicit_change requires client-stated evidence")
-    if observation.intent == "explicit_problem" and (observation.type != "bug" or not requested):
-        raise PolicyFailure("explicit_problem requires a bug and expected outcome")
-    if observation.intent == "ambiguous_reaction" and (
-        observation.type != "reaction" or observation.requested_outcome is not None or not clarification
-    ):
-        raise PolicyFailure("ambiguous_reaction requires a reaction and clarification question")
+    if observation.intent == "explicit_change":
+        if observation.type not in {"change_request", "feature_request"}:
+            raise _fail(observation, f"explicit_change requires type change_request or feature_request, not {observation.type}")
+        if not requested:
+            raise _fail(observation, "explicit_change requires a requested outcome")
+        if not has_quote:
+            raise _fail(observation, "explicit_change requires client-stated evidence")
+    if observation.intent == "explicit_problem":
+        if observation.type != "bug":
+            raise _fail(observation, f"explicit_problem requires type bug, not {observation.type}")
+        if not requested:
+            raise _fail(observation, "explicit_problem requires an expected outcome")
+    if observation.intent == "ambiguous_reaction":
+        if observation.type != "reaction":
+            raise _fail(observation, f"ambiguous_reaction requires type reaction, not {observation.type}")
+        if observation.requested_outcome is not None:
+            raise _fail(observation, "ambiguous_reaction requires a null requested_outcome")
+        if not clarification:
+            raise _fail(observation, "ambiguous_reaction requires a clarification question")
     if (observation.intent == "question") != (observation.type == "question"):
-        raise PolicyFailure("question intent and type must match")
+        raise _fail(observation, f"question intent and type must match, got intent {observation.intent} with type {observation.type}")
     if (observation.intent == "decision") != (observation.type == "decision"):
-        raise PolicyFailure("decision intent and type must match")
+        raise _fail(observation, f"decision intent and type must match, got intent {observation.intent} with type {observation.type}")
     if observation.intent == "none" and not (
         observation.type == "commentary" or (observation.type == "bug" and has_visual)
     ):
-        raise PolicyFailure("none intent requires commentary or a visually observed possible bug")
+        raise _fail(observation, "none intent requires commentary or a visually observed possible bug")
     if observation.type in {"question", "decision", "commentary", "reaction"} and observation.acceptance_criteria:
-        raise PolicyFailure("non-actionable observations require empty acceptance criteria")
+        raise _fail(observation, "non-actionable observations require empty acceptance criteria")
 
-    return [_normalize_evidence(span, duration_seconds) for span in observation.evidence]
+    return [_normalize_evidence(span, duration_seconds, observation.observation_id) for span in observation.evidence]
 
 
 def select_evidence_frame_timestamp(evidence: Sequence[EvidenceSpan]) -> float:

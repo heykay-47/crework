@@ -9,7 +9,7 @@ from feedback_triage.analyze import AnalysisFailed, analysis_fingerprint, analys
 from feedback_triage.gemini_video import FilesAPI, InteractionAPI, retrieve_verified_interaction
 from feedback_triage.input_video import VideoInfo
 from feedback_triage.ledger import RunLedger
-from tests.test_completion_trust import VALID_OUTPUT
+from tests.test_completion_trust import VALID_ANALYSIS_JSON, VALID_OUTPUT
 
 
 def completed_interaction(output: str = VALID_OUTPUT) -> object:
@@ -100,7 +100,7 @@ def test_normal_rerun_reuses_verified_analysis_without_a_client(
     video = prepare_video(monkeypatch, tmp_path)
     ledger = interrupted_ledger(video, tmp_path / "output")
     attempt_id = json.loads(ledger.path.read_text())["attempts"][0]["attempt_id"]
-    ledger.complete(attempt_id, json.loads(VALID_OUTPUT), processing_pair_count=1)
+    ledger.complete(attempt_id, json.loads(VALID_ANALYSIS_JSON), processing_pair_count=1)
 
     _, verified, rerun_ledger = analyze_recording(video, tmp_path / "output")
 
@@ -147,7 +147,7 @@ def test_reanalyze_appends_but_never_combines_attempt_output(
     video = prepare_video(monkeypatch, tmp_path)
     ledger = interrupted_ledger(video, tmp_path / "output")
     first_attempt = json.loads(ledger.path.read_text())["attempts"][0]["attempt_id"]
-    ledger.complete(first_attempt, json.loads(VALID_OUTPUT), processing_pair_count=1)
+    ledger.complete(first_attempt, json.loads(VALID_ANALYSIS_JSON), processing_pair_count=1)
 
     replacement = json.loads(VALID_OUTPUT)
     replacement["observations"][0]["observation_id"] = "obs_002"
@@ -183,7 +183,7 @@ def test_normal_rerun_reconciles_latest_attempt_instead_of_returning_stale_verif
     video = prepare_video(monkeypatch, tmp_path)
     ledger = interrupted_ledger(video, tmp_path / "output", "interaction-old")
     first = ledger.attempts[0]["attempt_id"]
-    ledger.complete(str(first), json.loads(VALID_OUTPUT), processing_pair_count=1)
+    ledger.complete(str(first), json.loads(VALID_ANALYSIS_JSON), processing_pair_count=1)
     second = ledger.start_attempt()
     ledger.record_interaction_created(second, "interaction-new")
     replacement = json.loads(VALID_OUTPUT)

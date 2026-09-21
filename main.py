@@ -122,6 +122,9 @@ def parser() -> argparse.ArgumentParser:
         type=Path,
         help="sanitized incident JSON; provide background rejection and zero-write case",
     )
+    web = subcommands.add_parser("web", help="serve the local Feedback Recording review application")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8000)
     return command_parser
 
 
@@ -133,7 +136,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_main(args)
     if args.command in {"package", "proof"}:
         return package_main(args)
+    if args.command == "web":
+        return web_main(args)
     return analyze_main(args)
+
+
+def web_main(args: argparse.Namespace) -> int:
+    from feedback_triage.web import WebSettings, create_app
+    import uvicorn
+
+    uvicorn.run(create_app(WebSettings.from_environment()), host=args.host, port=args.port)
+    return 0
 
 
 def _load_analysis_inputs(args: argparse.Namespace) -> tuple[GroundTruthManifest | None, str, str, str | None]:

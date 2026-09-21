@@ -15,7 +15,7 @@ from feedback_triage.ledger import RunLedger
 from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, EvidenceSpan, Observation, VerifiedAnalysis
 from feedback_triage.policy import route_analysis
 from main import main
-from tests.test_completion_trust import VALID_OUTPUT
+from tests.test_completion_trust import VALID_ANALYSIS_JSON
 
 
 def prepared_ledger(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, analysis: dict[str, object]) -> tuple[Path, RunLedger]:
@@ -37,7 +37,7 @@ def prepared_ledger(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, analysis: d
 def test_verified_analysis_is_routed_and_every_result_is_recorded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    video, ledger = prepared_ledger(monkeypatch, tmp_path, json.loads(VALID_OUTPUT))
+    video, ledger = prepared_ledger(monkeypatch, tmp_path, json.loads(VALID_ANALYSIS_JSON))
 
     _, verified, policy, returned_ledger = triage_recording(video, tmp_path / "output")
 
@@ -152,7 +152,7 @@ def test_actionable_routes_extract_and_record_frames_independently(
 
 
 def test_policy_failure_is_recorded_without_routes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    invalid = json.loads(VALID_OUTPUT)
+    invalid = json.loads(VALID_ANALYSIS_JSON)
     invalid["observations"][0]["topic_key"] = "Not Kebab Case"
     video, ledger = prepared_ledger(monkeypatch, tmp_path, invalid)
 
@@ -169,7 +169,7 @@ def test_policy_failure_is_recorded_without_routes(monkeypatch: pytest.MonkeyPat
 def test_terminal_output_shows_every_route_and_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    low_confidence = json.loads(VALID_OUTPUT)
+    low_confidence = json.loads(VALID_ANALYSIS_JSON)
     low_confidence["observations"][0]["confidence"] = "low"
     video, _ = prepared_ledger(monkeypatch, tmp_path, low_confidence)
 
@@ -211,7 +211,7 @@ def test_terminal_semantic_score_controls_exit_status(
     video = tmp_path / "feedback.mp4"
     video.write_bytes(b"owned synthetic recording")
     source_sha256 = file_sha256(video)
-    analysis = AnalysisResult.model_validate_json(VALID_OUTPUT)
+    analysis = AnalysisResult.model_validate_json(VALID_ANALYSIS_JSON)
     policy = route_analysis(analysis, duration_seconds=10.0, source_sha256=source_sha256)
     result = policy.results[0]
     ledger = RunLedger.create(

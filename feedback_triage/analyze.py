@@ -1,6 +1,7 @@
 import hashlib
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -22,7 +23,7 @@ from feedback_triage.fingerprint import (
 from feedback_triage.evidence import extract_evidence_frame
 from feedback_triage.input_video import InvalidInput, VideoInfo, probe_video
 from feedback_triage.ledger import LedgerFingerprintMismatch, RunLedger
-from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, PolicyResult, VerifiedAnalysis
+from feedback_triage.models import AnalysisWireResult, AnalysisResult, EvidenceFrameRecord, PolicyResult, VerifiedAnalysis
 from feedback_triage.policy import PolicyFailure, route_analysis
 
 
@@ -56,7 +57,7 @@ def analysis_fingerprint_inputs(
         source_sha256,
         model=MODEL,
         prompt=prompt,
-        schema=AnalysisResult.model_json_schema(),
+        schema=AnalysisWireResult.model_json_schema(),
         project_context=project_context,
         fixture_version=fixture_version,
         ground_truth_sha256=ground_truth_sha256,
@@ -143,7 +144,10 @@ def analyze_recording(
     fixture_version: str | None = None,
     ground_truth_sha256: str | None = None,
     reset_on_fingerprint_mismatch: bool = False,
+    on_stage: Callable[[str], None] | None = None,
 ) -> tuple[VideoInfo, VerifiedAnalysis, RunLedger]:
+    if on_stage is not None:
+        on_stage("input_validation")
     try:
         source_sha256 = file_sha256(video)
     except OSError as error:
@@ -185,7 +189,7 @@ def analyze_recording(
                 client = create_client()
             retrieve_started = time.monotonic()
             try:
-                verified = retrieve_verified_interaction(client, interaction_id)
+                verified = retrieve_verified_interaction(client, interaction_id, on_stage=on_stage)
             except InteractionTimeout as error:
                 raise AnalysisFailed(error.code, str(error)) from error
             except ValidationError as error:
@@ -229,6 +233,7 @@ def analyze_recording(
             prompt=prompt,
             project_context=project_context,
             on_timing=lambda name, seconds: ledger.record_measurement(attempt_id, name, seconds),
+            on_stage=on_stage,
         )
     except ValidationError as error:
         ledger.fail(attempt_id, code="output_invalid", detail=str(error))
@@ -292,6 +297,7 @@ def triage_recording(
     ground_truth_sha256: str | None = None,
     extract_evidence_frames: bool = True,
     reset_on_fingerprint_mismatch: bool = False,
+    on_stage: Callable[[str], None] | None = None,
 ) -> tuple[VideoInfo, VerifiedAnalysis, PolicyResult, RunLedger]:
     video_info, verified, ledger = analyze_recording(
         video,
@@ -303,9 +309,12 @@ def triage_recording(
         fixture_version=fixture_version,
         ground_truth_sha256=ground_truth_sha256,
         reset_on_fingerprint_mismatch=reset_on_fingerprint_mismatch,
+        on_stage=on_stage,
     )
     attempt_id = str(ledger.attempts[-1]["attempt_id"])
     try:
+        if on_stage is not None:
+            on_stage("policy_evaluation")
         policy = route_analysis(
             verified.analysis,
             duration_seconds=video_info.duration_seconds,
@@ -316,5 +325,7 @@ def triage_recording(
         raise AnalysisFailed(error.code, str(error)) from error
     ledger.record_policy_result(attempt_id, policy.model_dump(mode="json"))
     if extract_evidence_frames:
+        if on_stage is not None:
+            on_stage("evidence_frame_extraction")
         _record_evidence_frames(video, ledger, attempt_id, policy)
     return video_info, verified, policy, ledger

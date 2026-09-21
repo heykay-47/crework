@@ -237,6 +237,15 @@ def test_duplicate_topic_merges_sorted_normalized_evidence_and_keeps_candidate_i
         ({"topic_key": "Not Kebab Case"}, "invalid topic key"),
         ({"type": "bug", "intent": "explicit_change"}, "explicit_change"),
         ({"type": "reaction", "intent": "ambiguous_reaction", "requested_outcome": "Redesign it"}, "ambiguous_reaction"),
+        (
+            {
+                "type": "commentary",
+                "intent": "ambiguous_reaction",
+                "requested_outcome": None,
+                "clarification_question": "What should change?",
+            },
+            "ambiguous_reaction requires type reaction, not commentary",
+        ),
         ({"type": "commentary", "intent": "none", "acceptance_criteria": ["Change it"]}, "empty acceptance"),
     ],
 )
@@ -244,6 +253,13 @@ def test_cross_field_policy_failures_stop_the_whole_analysis(changes: dict[str, 
     invalid = observation(observation_id="obs_002", **changes)
 
     with pytest.raises(PolicyFailure, match=message):
+        route_analysis(analysis(observation(topic_key="valid-topic"), invalid), duration_seconds=10.0, source_sha256="a" * 64)
+
+
+def test_policy_failure_names_the_offending_observation() -> None:
+    invalid = observation(observation_id="obs_002", type="commentary", intent="ambiguous_reaction")
+
+    with pytest.raises(PolicyFailure, match="^obs_002: "):
         route_analysis(analysis(observation(topic_key="valid-topic"), invalid), duration_seconds=10.0, source_sha256="a" * 64)
 
 
@@ -293,3 +309,22 @@ def test_timestamp_policy_failures_stop_the_whole_analysis(evidence: dict[str, o
 
     with pytest.raises(PolicyFailure, match="evidence"):
         route_analysis(analysis(invalid), duration_seconds=10.0, source_sha256="a" * 64)
+
+
+def test_timestamp_failure_identifies_observation_span_and_duration() -> None:
+    invalid = observation(
+        observation_id="obs_002",
+        evidence=[{
+            "start_seconds": 210.0,
+            "end_seconds": 218.0,
+            "keyframe_seconds": None,
+            "client_quote": "Same issue down here",
+            "visual_observation": None,
+        }],
+    )
+
+    with pytest.raises(
+        PolicyFailure,
+        match=r"^obs_002: evidence span 210\.0-218\.0s exceeds the Feedback Recording duration of 139\.766667s$",
+    ):
+        route_analysis(analysis(invalid), duration_seconds=139.766667, source_sha256="a" * 64)

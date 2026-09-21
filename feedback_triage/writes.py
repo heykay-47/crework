@@ -45,6 +45,14 @@ class PublishOutcome:
 class ReviewDecision:
     action: Literal["approve", "decline"]
     changes: Mapping[str, object] = field(default_factory=dict)
+    manual_review_confirmed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ReviewOutcome:
+    candidate_id: str
+    state: Literal["approved", "declined", "skipped"]
+    approval: Approval | None = None
 
 
 class ExternalWriteFailure(RuntimeError):
@@ -163,6 +171,102 @@ class WriteCoordinator:
                 retry_ids=retry_ids,
                 canonical_issue_selections=canonical_issue_selections or {},
             )
+
+    def review_only(
+        self,
+        candidates: list[RoutedResult] | tuple[RoutedResult, ...],
+        *,
+        source_sha256: str,
+        destination_repository: str,
+        attempt_id: str,
+        decision_fn: Callable[[RoutedResult], ReviewDecision],
+        operator_label: str | None = None,
+        reconsider: bool = False,
+        require_fresh_review: bool = False,
+    ) -> tuple[ReviewOutcome, ...]:
+        """Persist explicit review decisions without performing an external write.
+
+        The web application uses this seam so Approval is a durable action that
+        cannot accidentally publish an Issue. Candidate snapshots are loaded
+        from the persisted policy result; callers cannot supply replacement
+        evidence or provenance.
+        """
+
+        with self.ledger.exclusive_lock():
+            persisted_candidates = self._policy_candidates(attempt_id, source_sha256)
+            outcomes: list[ReviewOutcome] = []
+            for candidate in candidates:
+                persisted = persisted_candidates.get(candidate.candidate_id)
+                if persisted is None or persisted.model_dump(mode="json") != candidate.model_dump(mode="json"):
+                    raise ValueError("review input must match a Candidate in the persisted policy result")
+                if candidate.route == "candidate" and not candidate.approval_eligible:
+                    continue
+                if candidate.route not in {"candidate", "manual_review"}:
+                    continue
+                default_approval = build_approval(
+                    source_sha256,
+                    candidate,
+                    destination_repository,
+                    manual_review_confirmed=candidate.route == "manual_review",
+                    operator_label=operator_label,
+                )
+                prior_approval = self.ledger.latest_approval_for(
+                    candidate_id=default_approval.candidate_id,
+                    destination_repository=default_approval.destination_repository,
+                )
+                if (
+                    not require_fresh_review
+                    and prior_approval is not None
+                    and prior_approval.candidate_snapshot_hash == default_approval.candidate_snapshot_hash
+                    and prior_approval.candidate_payload_hash == default_approval.candidate_payload_hash
+                ):
+                    outcomes.append(ReviewOutcome(candidate.candidate_id, "approved", prior_approval))
+                    continue
+                declined = self.ledger.has_decline(
+                    source_sha256=source_sha256,
+                    candidate_id=default_approval.candidate_id,
+                    destination_repository=default_approval.destination_repository,
+                    candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
+                    payload_hash=default_approval.payload_hash,
+                )
+                if declined and not reconsider and not require_fresh_review:
+                    outcomes.append(ReviewOutcome(candidate.candidate_id, "declined"))
+                    continue
+                if reconsider and declined:
+                    self.ledger.record_reconsideration(
+                        attempt_id,
+                        source_sha256=source_sha256,
+                        candidate_id=default_approval.candidate_id,
+                        destination_repository=default_approval.destination_repository,
+                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
+                        payload_hash=default_approval.payload_hash,
+                    )
+                decision = decision_fn(candidate)
+                if decision.action not in {"approve", "decline"}:
+                    raise ValueError("review decision must be approve or decline")
+                if decision.action == "decline":
+                    self.ledger.record_decline(
+                        attempt_id,
+                        source_sha256=source_sha256,
+                        candidate_id=default_approval.candidate_id,
+                        destination_repository=default_approval.destination_repository,
+                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
+                        payload_hash=default_approval.payload_hash,
+                    )
+                    outcomes.append(ReviewOutcome(candidate.candidate_id, "declined"))
+                    continue
+                approval = build_approval(
+                    source_sha256,
+                    candidate,
+                    destination_repository,
+                    changes=decision.changes or None,
+                    manual_review_confirmed=decision.manual_review_confirmed,
+                    operator_label=operator_label,
+                )
+                self._validate_approvals((approval,), attempt_id)
+                self.ledger.record_approval(attempt_id, approval)
+                outcomes.append(ReviewOutcome(candidate.candidate_id, "approved", approval))
+            return tuple(outcomes)
 
     def review_and_publish(
         self,

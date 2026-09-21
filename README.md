@@ -32,7 +32,9 @@ The command FFprobes the input before creating a Gemini client. It then uploads 
 
 1. `status == "completed"`;
 2. every `processing_call.id` to match exactly one observed `processing_result.call_id`, with no orphans;
-3. `output_text` to pass the v1 Pydantic schema.
+3. `output_text` to pass the v1 Gemini wire schema, after which its timecodes are parsed into the persisted domain schema.
+
+Gemini evidence timestamps use strict `HH:MM:SS[.fraction]` strings at the API boundary, not numeric seconds. This avoids the long-video ambiguity where a model could turn `1:26` into `126`. The trust boundary converts those strings deterministically to numeric elapsed seconds (`1:26` becomes `86.0`) before policy validation and Run Ledger persistence. Hours may contain more than two digits, so recordings longer than 24 hours remain representable. Malformed timecodes and impossible post-conversion spans fail closed as `output_invalid` or `policy_failed`; they are never heuristically clamped.
 
 The per-source Run Ledger is written atomically to `output/<source-sha256>/ledger.json`. Any failed trust gate records a stable failure and returns no Observation to policy or external integrations. In the normal full triage pipeline, actionable `candidate` and `manual_review` routes also receive a local Evidence Frame under `output/<source-sha256>/evidence-frames/<attempt-id>/<candidate-id>.png`; the first two acceptance commands intentionally defer frame extraction until `run`.
 
@@ -122,6 +124,23 @@ Each Approval is an immutable snapshot of the source SHA-256, stable Candidate I
 ```
 
 The command holds a source-scoped lock, reconciles pending writes and existing Issue Records before asking for new decisions, searches open and closed Issues for the exact marker, persists `approved` and then `write_pending` before a POST, and submits approved Candidates sequentially. An existing exact marker is adopted without POST. If multiple exact matches are found, publishing stops; provide one or more explicit `--canonical-selection CANDIDATE_ID=ISSUE_NUMBER` values on a later run to record the human canonical choice and adopt that verified Issue without mutation. A create response is accepted only after destination, Issue number, and marker verification; a destination-scoped Issue Record is persisted immediately. Issue creation is never automatically retried. Use `--retry-failed` only for a definitive rejection, or use both `--retry-uncertain --confirm-no-issue` after an explicit human certification. A lost response or zero-match reconciliation remains fail-closed. Changed `--reanalyze` snapshots and destinations require fresh Approval, while an existing verified Issue remains skip-only; no rerun updates, reopens, overwrites, or recreates it.
+
+## Local browser review application
+
+The `web` command serves a local, single-user review workspace at `http://127.0.0.1:8000`. It uses the same analysis, policy, Run Ledger, Evidence Frame, Approval, reconciliation, and write-coordination services as the CLI; it does not expose credentials or raw Gemini diagnostics to the browser. Uploads are staged beneath `/output/web/uploads`, and completed web recordings can be reopened from their persisted metadata without rerunning Gemini. Completed CLI ledgers are also opened from `/output/<source_sha256>/ledger.json` when their matching recording is present under `/input`; choose them from the persisted-recording picker.
+
+```bash
+mkdir -p output
+docker run --rm --user "$(id -u):$(id -g)" \
+  --env GEMINI_API_KEY --env GITHUB_TOKEN --env GITHUB_REPOSITORY \
+  --publish 127.0.0.1:8000:8000 \
+  --mount type=bind,src="$PWD/inbox",dst=/input,readonly \
+  --mount type=bind,src="$PWD/CONTEXT.md",dst=/context/CONTEXT.md,readonly \
+  --mount type=bind,src="$PWD/output",dst=/output \
+  client-feedback-triage web --host 0.0.0.0 --port 8000
+```
+
+The interface has one explicit Analyze action, coarse stage announcements without invented percentages, a keyboard-operable timeline, route-labelled review groups, immutable evidence/provenance fields, editable Approval prose only, a collapsed trust panel, and separate Approval and publish actions. `Clarification Request` and `Withheld Result` routes have no Approval action. Publishing is fail-closed through the same marker reconciliation and Issue Record rules as `publish`; definitive failures can be retried, uncertain writes require the visible no-existing-Issue certification, and canonical conflicts require an explicit Candidate-to-Issue selection before the publish control is enabled.
 
 ## Canonical semantic evaluation
 

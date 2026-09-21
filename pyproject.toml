@@ -7,14 +7,18 @@ name = "client-feedback-triage"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+  "fastapi>=0.116,<1",
   "google-genai==2.24.0",
   "pydantic>=2.12.5,<3",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn[standard]>=0.35,<1",
 ]
 
 [dependency-groups]
 dev = [
   "mypy>=1.18.2,<2",
   "pytest>=8.4.2,<9",
+  "httpx>=0.28.1,<1",
 ]
 
 [tool.hatch.build.targets.wheel]

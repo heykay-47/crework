@@ -14,7 +14,7 @@ from feedback_triage.github import GitHubApiError, GitHubIssue, GitHubTransportE
 from feedback_triage.ledger import LedgerInvalid, LedgerLocked, RunLedger
 from feedback_triage.models import PolicyResult, RoutedResult
 from feedback_triage.writes import ExternalWriteFailure, ReviewDecision, WriteCoordinator
-from tests.test_completion_trust import VALID_OUTPUT
+from tests.test_completion_trust import VALID_OUTPUT, VALID_ANALYSIS_JSON
 from tests.test_recovery import RecoveryClient, completed_interaction, interrupted_ledger, prepare_video
 from tests.test_triage import prepared_ledger
 from tests.test_write_coordinator import FakeGitHub, approved, candidate, ledger as write_ledger, remote_issue
@@ -306,7 +306,7 @@ def test_gemini_trust_failures_are_terminal_and_never_post(
 def test_policy_failure_is_terminal_and_never_posted(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    invalid = json.loads(VALID_OUTPUT)
+    invalid = json.loads(VALID_ANALYSIS_JSON)
     invalid["observations"][0]["topic_key"] = "Not Kebab Case"
     video, ledger = prepared_ledger(monkeypatch, tmp_path, invalid)
     gateway = MatrixGateway()

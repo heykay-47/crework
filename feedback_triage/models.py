@@ -1,10 +1,11 @@
 import hashlib
 import json
 import math
+import re
 from datetime import datetime
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 ReasonCode = Literal["question_not_request", "decision_not_request", "non_actionable_commentary", "low_confidence"]
 ObservationType = Literal["bug", "change_request", "feature_request", "question", "decision", "reaction", "commentary"]
@@ -49,6 +50,35 @@ def issue_payload_hash(payload: IssuePayload) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+TIMECODE_PATTERN = re.compile(r"^(?P<hours>[0-9]{2,}):(?P<minutes>[0-5][0-9]):(?P<seconds>[0-5][0-9])(?:\.(?P<fraction>[0-9]{1,6}))?$")
+
+
+def timecode_to_seconds(value: str) -> float:
+    match = TIMECODE_PATTERN.fullmatch(value)
+    if match is None:
+        raise ValueError("timecode must use HH:MM:SS[.fraction]")
+    fraction = match.group("fraction") or ""
+    seconds = (
+        int(match.group("hours")) * 3600
+        + int(match.group("minutes")) * 60
+        + int(match.group("seconds"))
+        + (int(fraction) / (10 ** len(fraction)) if fraction else 0.0)
+    )
+    if not math.isfinite(seconds):
+        raise ValueError("timecode must produce a finite timestamp")
+    return seconds
+
+
+def seconds_to_timecode(value: float) -> str:
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("seconds must be finite and non-negative")
+    micros = round(value * 1_000_000)
+    hours, remainder = divmod(micros, 3_600_000_000)
+    minutes, remainder = divmod(remainder, 60_000_000)
+    seconds, fraction = divmod(remainder, 1_000_000)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{fraction:06d}"
+
+
 class EvidenceSpan(StrictModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
@@ -63,6 +93,32 @@ class EvidenceSpan(StrictModel):
         values = (self.start_seconds, self.end_seconds, self.keyframe_seconds)
         if any(value is not None and not math.isfinite(value) for value in values):
             raise ValueError("evidence timestamps must be finite")
+        if not any(value and value.strip() for value in (self.client_quote, self.visual_observation)):
+            raise ValueError("evidence requires a client quote or visual observation")
+        return self
+
+
+class EvidenceWireSpan(StrictModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    start_timecode: str = Field(description="Elapsed position as HH:MM:SS[.fraction].")
+    end_timecode: str = Field(description="Elapsed position as HH:MM:SS[.fraction].")
+    keyframe_timecode: str | None = Field(
+        default=None,
+        description="Optional elapsed position as HH:MM:SS[.fraction].",
+    )
+    client_quote: str | None = None
+    visual_observation: str | None = None
+
+    @field_validator("start_timecode", "end_timecode", "keyframe_timecode")
+    @classmethod
+    def validate_timecode(cls, value: str | None) -> str | None:
+        if value is not None:
+            timecode_to_seconds(value)
+        return value
+
+    @model_validator(mode="after")
+    def validate_evidence_text(self) -> Self:
         if not any(value and value.strip() for value in (self.client_quote, self.visual_observation)):
             raise ValueError("evidence requires a client quote or visual observation")
         return self
@@ -100,6 +156,81 @@ class AnalysisResult(StrictModel):
         if not self.video_summary.strip():
             raise ValueError("video summary must not be blank")
         return self
+
+
+class ObservationWire(StrictModel):
+    observation_id: str = Field(pattern=r"^obs_[0-9]{3}$")
+    topic_key: str
+    type: ObservationType
+    intent: Intent
+    title: str = Field(min_length=1)
+    component: str | None
+    summary: str = Field(min_length=1)
+    requested_outcome: str | None
+    acceptance_criteria: list[str]
+    clarification_question: str | None
+    confidence: Literal["high", "medium", "low"]
+    evidence: list[EvidenceWireSpan] = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_required_text(self) -> Self:
+        if any(not value.strip() for value in (self.title, self.summary, self.rationale)):
+            raise ValueError("required observation text must not be blank")
+        return self
+
+
+class AnalysisWireResult(StrictModel):
+    schema_version: Literal["1.0"]
+    video_summary: str = Field(min_length=1)
+    observations: list[ObservationWire] = Field(max_length=50)
+
+    @model_validator(mode="after")
+    def validate_summary(self) -> Self:
+        if not self.video_summary.strip():
+            raise ValueError("video summary must not be blank")
+        return self
+
+
+def parse_wire_analysis(output_text: str) -> AnalysisResult:
+    wire = AnalysisWireResult.model_validate_json(output_text)
+    payload: dict[str, Any] = wire.model_dump(mode="python")
+    for observation in payload["observations"]:
+        observation["evidence"] = [
+            {
+                "start_seconds": timecode_to_seconds(span["start_timecode"]),
+                "end_seconds": timecode_to_seconds(span["end_timecode"]),
+                "keyframe_seconds": (
+                    timecode_to_seconds(span["keyframe_timecode"])
+                    if span["keyframe_timecode"] is not None
+                    else None
+                ),
+                "client_quote": span["client_quote"],
+                "visual_observation": span["visual_observation"],
+            }
+            for span in observation["evidence"]
+        ]
+    return AnalysisResult.model_validate(payload)
+
+
+def analysis_to_wire(analysis: AnalysisResult) -> AnalysisWireResult:
+    payload: dict[str, Any] = analysis.model_dump(mode="python")
+    for observation in payload["observations"]:
+        observation["evidence"] = [
+            {
+                "start_timecode": seconds_to_timecode(span["start_seconds"]),
+                "end_timecode": seconds_to_timecode(span["end_seconds"]),
+                "keyframe_timecode": (
+                    seconds_to_timecode(span["keyframe_seconds"])
+                    if span["keyframe_seconds"] is not None
+                    else None
+                ),
+                "client_quote": span["client_quote"],
+                "visual_observation": span["visual_observation"],
+            }
+            for span in observation["evidence"]
+        ]
+    return AnalysisWireResult.model_validate(payload)
 
 
 class VerifiedAnalysis(StrictModel):

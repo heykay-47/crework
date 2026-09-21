@@ -26,7 +26,7 @@ from feedback_triage.proof import (
     build_proof_package,
 )
 from tests.test_acceptance_cli import _canonical_policy
-from tests.test_completion_trust import VALID_OUTPUT
+from tests.test_completion_trust import VALID_ANALYSIS_JSON
 
 
 SOURCE = "f0b72e2f45e33166616e18293b1326be5fd8d1d8635a4e6a3770b516e9773fdc"
@@ -72,7 +72,7 @@ def _seed(
         fingerprint=fingerprint,
     )
     policy = _canonical_policy()
-    analysis = AnalysisResult.model_validate_json(VALID_OUTPUT)
+    analysis = AnalysisResult.model_validate_json(VALID_ANALYSIS_JSON)
     attempt_ids: list[str] = []
     actionable = tuple(result for result in policy.results if result.route in {"candidate", "manual_review"})
     frame_paths: dict[str, Path] = {}
