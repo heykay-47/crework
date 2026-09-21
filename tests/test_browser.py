@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import socket
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Thread
 from typing import cast
@@ -11,9 +11,13 @@ import httpx
 import pytest
 import uvicorn
 
+from feedback_triage import analyze as analyze_module
 from feedback_triage import web
 from feedback_triage.gemini_video import GeminiClient
-from tests.test_web import BrowserGeminiGateway, FakeGateway, install_fake_analysis
+from feedback_triage.input_video import VideoInfo
+from feedback_triage.ledger import RunLedger
+from feedback_triage.models import EvidenceFrameRecord, PolicyResult, VerifiedAnalysis
+from tests.test_web import BrowserGeminiGateway, FakeGateway, routed
 
 try:
     from playwright.sync_api import Error as PlaywrightError
@@ -22,9 +26,68 @@ except ModuleNotFoundError:
     pytest.skip("browser test skipped: install the dev dependencies to provide Playwright", allow_module_level=True)
 
 
+def install_browser_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_probe(video: Path) -> VideoInfo:
+        return VideoInfo(path=video, duration_seconds=42.0)
+
+    def browser_triage(
+        video: Path,
+        output: Path,
+        *,
+        client: GeminiClient | None = None,
+        reanalyze: bool = False,
+        prompt: str = "",
+        project_context: str = "",
+        extract_evidence_frames: bool = True,
+        on_stage: Callable[[str], None] | None = None,
+        **_: object,
+    ) -> tuple[VideoInfo, VerifiedAnalysis, PolicyResult, RunLedger]:
+        video_info, verified, ledger = analyze_module.analyze_recording(
+            video,
+            output,
+            client,
+            reanalyze=reanalyze,
+            prompt=prompt,
+            project_context=project_context,
+            on_stage=on_stage,
+        )
+        attempt_id = str(ledger.attempts[-1]["attempt_id"])
+        candidates = (
+            routed("cand_aaaaaaaaaaaaaaaa", "candidate", evidence_count=2, duplicate_span=True),
+            routed("cand_bbbbbbbbbbbbbbbb", "clarification_request"),
+            routed("cand_cccccccccccccccc", "manual_review", evidence_count=0),
+            routed("cand_dddddddddddddddd", "withheld_result"),
+        )
+        if on_stage is not None:
+            on_stage("policy_evaluation")
+        policy = PolicyResult(schema_version="1.0", results=list(candidates))
+        ledger.record_policy_result(attempt_id, policy.model_dump(mode="json"))
+        if extract_evidence_frames:
+            if on_stage is not None:
+                on_stage("evidence_frame_extraction")
+            frame_path = output / ledger.source_sha256 / "evidence-frames" / "frame.png"
+            frame_path.parent.mkdir(parents=True, exist_ok=True)
+            frame_path.write_bytes(b"png")
+            for candidate in (candidates[0], candidates[2]):
+                ledger.record_evidence_frame(
+                    attempt_id,
+                    EvidenceFrameRecord(
+                        candidate_id=candidate.candidate_id,
+                        timestamp_seconds=1.5,
+                        status="extracted",
+                        path=str(frame_path),
+                    ),
+                )
+        return video_info, verified, policy, ledger
+
+    monkeypatch.setattr(web, "probe_video", fake_probe)
+    monkeypatch.setattr(analyze_module, "probe_video", fake_probe)
+    monkeypatch.setattr(web, "triage_recording", browser_triage)
+
+
 @pytest.fixture
 def running_web_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[str, FakeGateway, BrowserGeminiGateway]]:
-    install_fake_analysis(monkeypatch, duplicate_span=True)
+    install_browser_analysis(monkeypatch)
     gateway = FakeGateway()
     gemini = BrowserGeminiGateway()
     settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")

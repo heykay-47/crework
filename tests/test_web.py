@@ -133,11 +133,6 @@ class BrowserGeminiGateway:
         self.files = BrowserGeminiFiles()
         self.interactions = BrowserGeminiInteractions(analysis)
 
-    def exercise(self) -> None:
-        events = tuple(self.interactions.create(model="browser-test"))
-        created = next(event for event in events if getattr(event, "event_type", None) == "interaction.created")
-        self.interactions.get(id=getattr(getattr(created, "interaction"), "id"))
-
 
 def install_fake_analysis(
     monkeypatch: pytest.MonkeyPatch,
@@ -159,8 +154,6 @@ def install_fake_analysis(
     ) -> tuple[VideoInfo, VerifiedAnalysis, RunLedger,]:
         if seen_clients is not None:
             seen_clients.append(client)
-        if isinstance(client, BrowserGeminiGateway):
-            client.exercise()
         source_sha256 = file_sha256(video)
         fingerprint_inputs = analysis_fingerprint_inputs(source_sha256, prompt=PROMPT, project_context="")
         ledger = RunLedger.create(
