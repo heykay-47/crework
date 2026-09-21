@@ -101,7 +101,7 @@ def test_real_browser_review_workflow(
             assert "Evidence Frame" in (fallback.get_attribute("aria-label") or "")
 
             video = page.locator("#review-video")
-            page.wait_for_function("document.getElementById('review-video').readyState >= 1", timeout=5_000)
+            page.wait_for_function("() => document.getElementById('review-video').readyState >= 1", timeout=5_000)
             video.focus()
             video.press("Space")
             page.wait_for_timeout(100)
@@ -110,21 +110,12 @@ def test_real_browser_review_workflow(
             page.wait_for_timeout(100)
             assert page.evaluate("document.getElementById('review-video').paused")
 
-            page.evaluate(
-                """
-                () => {
-                  const video = document.getElementById('review-video');
-                  let current = 0;
-                  Object.defineProperty(video, 'currentTime', {
-                    configurable: true,
-                    get: () => current,
-                    set: (value) => { current = value; },
-                  });
-                }
-                """
-            )
             candidate_marker.click()
-            assert page.evaluate("document.getElementById('review-video').currentTime") == 1
+            page.wait_for_function(
+                "() => Math.abs(document.getElementById('review-video').currentTime - 1) < 0.1",
+                timeout=5_000,
+            )
+            expect(page.locator("#routed-result-detail .evidence-button")).to_have_count(2)
             candidate_id = page.locator(".queue-card.candidate").first.get_attribute("data-candidate-id")
             assert candidate_id is not None
             selected_card = page.locator(f'.queue-card[data-candidate-id="{candidate_id}"]')
@@ -135,14 +126,20 @@ def test_real_browser_review_workflow(
             candidate_marker.press("Enter")
             fallback.focus()
             fallback.press("Enter")
-            assert page.evaluate("document.getElementById('review-video').currentTime") == 1.5
+            page.wait_for_function(
+                "() => Math.abs(document.getElementById('review-video').currentTime - 1.5) < 0.1",
+                timeout=5_000,
+            )
             assert "is-selected" in (manual_card.get_attribute("class") or "")
             expect(page.locator("#detail-route")).to_have_text("Manual Review")
             expect(page.locator("#global-announcement")).to_contain_text("Selected Manual Review")
             frame_button = page.locator(".evidence-frame-button")
             expect(frame_button).to_have_count(1)
             frame_button.press("Enter")
-            assert page.evaluate("document.getElementById('review-video').currentTime") == 1.5
+            page.wait_for_function(
+                "() => Math.abs(document.getElementById('review-video').currentTime - 1.5) < 0.1",
+                timeout=5_000,
+            )
 
             manual_title = page.locator("#edit-title").input_value()
             page.locator("#edit-title").press("Control+A")
