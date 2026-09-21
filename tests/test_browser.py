@@ -58,7 +58,7 @@ def test_real_browser_review_workflow(
 ) -> None:
     base_url, gateway, gemini = running_web_app
     source = tmp_path / "browser-workflow.mp4"
-    source.write_bytes(b"browser test input")
+    source.write_bytes(Path("fixtures/canonical/feedback-recording.mp4").read_bytes())
 
     with sync_playwright() as playwright:
         try:
@@ -77,6 +77,7 @@ def test_real_browser_review_workflow(
             expect(page.locator("#global-announcement")).to_contain_text("Recording validated")
             expect(page.locator("#analysis-panel")).to_be_visible()
             page.locator("#analyze-button").press("Enter")
+            expect(page.locator("#global-announcement")).to_have_text("Analysis started.")
             expect(page.locator("#review-panel")).to_be_visible(timeout=15_000)
             expect(page.locator("#recording-status")).to_have_text("ready for review", timeout=15_000)
 
@@ -99,6 +100,16 @@ def test_real_browser_review_workflow(
             expect(fallback).to_have_attribute("data-seconds", "1.5")
             assert "Evidence Frame" in (fallback.get_attribute("aria-label") or "")
 
+            video = page.locator("#review-video")
+            page.wait_for_function("document.getElementById('review-video').readyState >= 1", timeout=5_000)
+            video.focus()
+            video.press("Space")
+            page.wait_for_timeout(100)
+            assert page.evaluate("!document.getElementById('review-video').paused")
+            video.press("Space")
+            page.wait_for_timeout(100)
+            assert page.evaluate("document.getElementById('review-video').paused")
+
             page.evaluate(
                 """
                 () => {
@@ -112,10 +123,6 @@ def test_real_browser_review_workflow(
                 }
                 """
             )
-            video = page.locator("#review-video")
-            video.focus()
-            video.press("Space")
-            assert page.evaluate("document.activeElement.id") == "review-video"
             candidate_marker.click()
             assert page.evaluate("document.getElementById('review-video').currentTime") == 1
             candidate_id = page.locator(".queue-card.candidate").first.get_attribute("data-candidate-id")
@@ -124,13 +131,14 @@ def test_real_browser_review_workflow(
             assert "is-selected" in (selected_card.get_attribute("class") or "")
 
             manual_card = page.locator(".queue-card.manual_review")
-            manual_card.focus()
-            manual_card.press("Enter")
-            expect(page.locator("#detail-route")).to_have_text("Manual Review")
-            expect(page.locator("#global-announcement")).to_contain_text("Selected Manual Review")
+            candidate_marker.focus()
+            candidate_marker.press("Enter")
             fallback.focus()
             fallback.press("Enter")
             assert page.evaluate("document.getElementById('review-video').currentTime") == 1.5
+            assert "is-selected" in (manual_card.get_attribute("class") or "")
+            expect(page.locator("#detail-route")).to_have_text("Manual Review")
+            expect(page.locator("#global-announcement")).to_contain_text("Selected Manual Review")
             frame_button = page.locator(".evidence-frame-button")
             expect(frame_button).to_have_count(1)
             frame_button.press("Enter")
