@@ -55,6 +55,8 @@ def test_container_smoke(tmp_path: Path) -> None:
         "--rm",
         "--user",
         f"{os.getuid()}:{os.getgid()}",
+        "--env",
+        "GEMINI_API_KEY",
         "--publish",
         f"127.0.0.1:{port}:8000",
         "--mount",
