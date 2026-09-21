@@ -73,21 +73,16 @@ def render_issue_payload(candidate: RoutedResult, source_sha256: str) -> IssuePa
             f"{quote}; visual: {visual}"
         )
 
-    criteria = tuple(criterion.strip() for criterion in candidate.acceptance_criteria if criterion.strip())
-    acceptance = "\n".join(f"- {criterion}" for criterion in criteria)
+    acceptance = "\n".join(f"- {criterion}" for criterion in candidate.acceptance_criteria)
     if not acceptance:
         acceptance = "- No acceptance criterion was provided."
-    requested_outcome = candidate.requested_outcome.strip() if candidate.requested_outcome else ""
-    requested_outcome = requested_outcome or "No requested outcome was provided."
-    summary = candidate.summary.strip()
-    component = candidate.component.strip() if candidate.component else ""
-    component = component or "Not specified"
+    requested_outcome = candidate.requested_outcome or "No requested outcome was provided."
     body = "\n".join(
         [
             marker,
             "",
             "## Summary",
-            summary,
+            candidate.summary,
             "",
             "## Requested outcome",
             requested_outcome,
@@ -96,7 +91,7 @@ def render_issue_payload(candidate: RoutedResult, source_sha256: str) -> IssuePa
             acceptance,
             "",
             "## Component",
-            component,
+            candidate.component or "Not specified",
             "",
             "## Source evidence",
             f"- Source SHA-256: `{source_sha256}`",
@@ -114,6 +109,16 @@ def render_issue_payload(candidate: RoutedResult, source_sha256: str) -> IssuePa
         ]
     )
     return IssuePayload(title=candidate.title.strip(), body=body)
+
+
+def _normalize_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _comparison_payload(payload: IssuePayload) -> tuple[str, str]:
+    """Compare payloads without treating whitespace-only edits as material."""
+
+    return _normalize_whitespace(payload.title), _normalize_whitespace(payload.body)
 
 
 def edit_candidate(candidate: RoutedResult, changes: Mapping[str, Any]) -> RoutedResult:
@@ -147,7 +152,7 @@ def build_approval(
         raise ApprovalError("only policy-admitted Candidates may be approved")
     candidate_payload = render_issue_payload(candidate, source_sha256)
     payload = render_issue_payload(reviewed_candidate, source_sha256)
-    edit_confirms = changes is not None and payload != candidate_payload
+    edit_confirms = changes is not None and _comparison_payload(payload) != _comparison_payload(candidate_payload)
     confirmed = reviewed_candidate.route == "manual_review" and (manual_review_confirmed or edit_confirms)
     if reviewed_candidate.route == "manual_review" and not confirmed:
         raise ApprovalError("Manual Review must be confirmed or edited before Approval")

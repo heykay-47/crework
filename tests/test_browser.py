@@ -13,7 +13,7 @@ import uvicorn
 
 from feedback_triage import web
 from feedback_triage.gemini_video import GeminiClient
-from tests.test_web import FakeGateway, install_fake_analysis
+from tests.test_web import BrowserGeminiGateway, FakeGateway, install_fake_analysis
 
 try:
     from playwright.sync_api import Error as PlaywrightError
@@ -23,11 +23,12 @@ except ModuleNotFoundError:
 
 
 @pytest.fixture
-def running_web_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[str, FakeGateway]]:
+def running_web_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[str, FakeGateway, BrowserGeminiGateway]]:
     install_fake_analysis(monkeypatch, duplicate_span=True)
     gateway = FakeGateway()
+    gemini = BrowserGeminiGateway()
     settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
-    app = web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=gateway)
+    app = web.create_app(settings, gemini_client=cast(GeminiClient, gemini), github_gateway=gateway)
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = int(probe.getsockname()[1])
@@ -46,14 +47,16 @@ def running_web_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator
             time.sleep(0.05)
         else:
             raise AssertionError("local web server did not become healthy")
-        yield base_url, gateway
+        yield base_url, gateway, gemini
     finally:
         server.should_exit = True
         thread.join(timeout=5)
 
 
-def test_real_browser_review_workflow(running_web_app: tuple[str, FakeGateway], tmp_path: Path) -> None:
-    base_url, gateway = running_web_app
+def test_real_browser_review_workflow(
+    running_web_app: tuple[str, FakeGateway, BrowserGeminiGateway], tmp_path: Path
+) -> None:
+    base_url, gateway, gemini = running_web_app
     source = tmp_path / "browser-workflow.mp4"
     source.write_bytes(b"browser test input")
 
@@ -109,6 +112,10 @@ def test_real_browser_review_workflow(running_web_app: tuple[str, FakeGateway], 
                 }
                 """
             )
+            video = page.locator("#review-video")
+            video.focus()
+            video.press("Space")
+            assert page.evaluate("document.activeElement.id") == "review-video"
             candidate_marker.click()
             assert page.evaluate("document.getElementById('review-video').currentTime") == 1
             candidate_id = page.locator(".queue-card.candidate").first.get_attribute("data-candidate-id")
@@ -161,3 +168,4 @@ def test_real_browser_review_workflow(running_web_app: tuple[str, FakeGateway], 
             expect(page.locator("#recording-status")).to_have_text("published", timeout=15_000)
             expect(page.locator("#global-announcement")).to_contain_text("Publishing completed")
             assert gateway.create_calls == 2
+            assert gemini.interactions.created_ids == ["browser-interaction-1"]
