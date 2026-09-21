@@ -18,10 +18,10 @@ from contextlib import asynccontextmanager
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -33,15 +33,20 @@ from feedback_triage.analyze import (
     file_sha256,
     triage_recording,
 )
-from feedback_triage.approval import EDITABLE_FIELDS, build_approval, normalize_destination
-from feedback_triage.github import GitHubApiError, GitHubIssueClient
-from feedback_triage.gemini_video import PROMPT
+from feedback_triage.approval import ApprovalError, EDITABLE_FIELDS, build_approval, normalize_destination
+from feedback_triage.github import GitHubApiError, GitHubIssue, GitHubIssueClient
+from feedback_triage.gemini_video import GeminiClient, PROMPT
 from feedback_triage.input_video import InvalidInput, probe_video
 from feedback_triage.ledger import LedgerFingerprintMismatch, LedgerInvalid, LedgerLocked, RunLedger
 from feedback_triage.models import (
+    EvidenceFrameStatus,
+    EvidenceSpan,
     EvidenceFrameRecord,
+    IssuePayload,
     PolicyResult,
+    Route,
     RoutedResult,
+    WriteState,
     routed_result_hash,
     seconds_to_timecode,
 )
@@ -55,28 +60,62 @@ from feedback_triage.writes import (
 
 
 ALLOWED_VIDEO_EXTENSIONS = frozenset({".avi", ".m4v", ".mkv", ".mov", ".mp4", ".webm"})
-STAGE_LABELS = {
+StageKey = Literal[
+    "upload",
+    "gemini_processing",
+    "interaction_verification",
+    "policy_evaluation",
+    "evidence_frame_extraction",
+]
+StageState = Literal["pending", "running", "completed", "failed"]
+RecordingStatus = Literal["uploaded", "analyzing", "ready_for_review", "publishing", "published", "failed"]
+
+STAGE_LABELS: dict[StageKey, str] = {
     "upload": "Upload validated",
     "gemini_processing": "Gemini processing",
     "interaction_verification": "Interaction verification",
     "policy_evaluation": "Policy evaluation",
     "evidence_frame_extraction": "Evidence Frame extraction",
 }
-STAGE_KEYS = tuple(STAGE_LABELS)
-STAGE_STATES = {"pending", "running", "completed", "failed"}
+STAGE_KEYS: tuple[StageKey, ...] = tuple(STAGE_LABELS)
+STAGE_STATES: frozenset[StageState] = frozenset({"pending", "running", "completed", "failed"})
 RECORDING_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-ROUTE_LABELS = {
-    "candidate": "Candidate",
-    "clarification_request": "Clarification Request",
-    "manual_review": "Manual Review",
-    "withheld_result": "Withheld Result",
-}
-ROUTE_DESCRIPTIONS = {
-    "candidate": "Ready for an explicit Approval decision.",
-    "clarification_request": "Needs a clearer request before it can become an Issue.",
-    "manual_review": "Needs explicit human confirmation before Approval.",
-    "withheld_result": "Held back by policy; it cannot be approved.",
-}
+
+
+def _write_state(value: object) -> WriteState | None:
+    if value == "write_pending":
+        return "write_pending"
+    if value == "written":
+        return "written"
+    if value == "write_failed":
+        return "write_failed"
+    if value == "write_uncertain":
+        return "write_uncertain"
+    if value == "external_write_conflict":
+        return "external_write_conflict"
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class RouteDefinition:
+    key: Route
+    label: str
+    description: str
+    approval_eligible: bool
+
+
+ROUTE_DEFINITIONS: tuple[RouteDefinition, ...] = (
+    RouteDefinition("candidate", "Candidate", "Ready for an explicit Approval decision.", True),
+    RouteDefinition(
+        "clarification_request",
+        "Clarification Request",
+        "Needs a clearer request before it can become an Issue.",
+        False,
+    ),
+    RouteDefinition("manual_review", "Manual Review", "Needs explicit human confirmation before Approval.", True),
+    RouteDefinition("withheld_result", "Withheld Result", "Held back by policy; it cannot be approved.", False),
+)
+ROUTE_DEFINITIONS_BY_KEY: dict[Route, RouteDefinition] = {definition.key: definition for definition in ROUTE_DEFINITIONS}
 FAILURE_MESSAGES = {
     "invalid_input": "This file is not a valid Feedback Recording. Choose a supported video with a readable duration.",
     "configuration_missing": "Gemini is not configured for this local app. Add the credential configuration and try again.",
@@ -100,6 +139,18 @@ FAILURE_MESSAGES = {
     "review_not_allowed": "This routed result cannot receive an Approval action.",
     "manual_review_confirmation_required": "Manual Review requires explicit confirmation or an allowed prose edit.",
 }
+
+
+def _review_http_error(error: ApprovalError | ValueError) -> HTTPException:
+    if str(error).startswith("Manual Review must be confirmed"):
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": "manual_review_confirmation_required",
+                "message": FAILURE_MESSAGES["manual_review_confirmation_required"],
+            },
+        )
+    return HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]})
 RETRYABLE_FAILURES = frozenset(
     {
         "configuration_missing",
@@ -125,25 +176,16 @@ PUBLISH_FAILURE_CODES = frozenset(
 )
 
 
+@dataclass(frozen=True, slots=True)
 class WebSettings:
     """Filesystem and local integration settings for the app."""
 
-    def __init__(
-        self,
-        *,
-        input_root: Path = Path("/input"),
-        output_root: Path = Path("/output"),
-        context_root: Path = Path("/context"),
-        github_repository: str | None = None,
-        github_token: str | None = None,
-        max_upload_bytes: int = 2 * 1024 * 1024 * 1024,
-    ) -> None:
-        self.input_root = input_root
-        self.output_root = output_root
-        self.context_root = context_root
-        self.github_repository = github_repository
-        self.github_token = github_token
-        self.max_upload_bytes = max_upload_bytes
+    input_root: Path = Path("/input")
+    output_root: Path = Path("/output")
+    context_root: Path = Path("/context")
+    github_repository: str | None = None
+    github_token: str | None = None
+    max_upload_bytes: int = 2 * 1024 * 1024 * 1024
 
     @classmethod
     def from_environment(cls) -> "WebSettings":
@@ -173,10 +215,9 @@ class FailureDTO(WebModel):
 
 
 class StageDTO(WebModel):
-    key: str
+    key: StageKey
     label: str
-    state: Literal["pending", "running", "completed", "failed"]
-    progress: None = None
+    state: StageState
 
 
 class EvidenceSpanDTO(WebModel):
@@ -194,15 +235,15 @@ class EvidenceFrameDTO(WebModel):
     candidate_id: str
     timestamp_seconds: float
     timestamp_timecode: str
-    status: Literal["extracted", "failed"]
+    status: EvidenceFrameStatus
     url: str | None
     error: str | None
 
 
-class CandidateDTO(WebModel):
+class RoutedResultDTO(WebModel):
     candidate_id: str
     topic_key: str
-    route: str
+    route: Route
     route_label: str
     route_description: str
     type: str
@@ -226,14 +267,14 @@ class CandidateDTO(WebModel):
     editable_fields: tuple[str, ...]
     decision: Literal["unreviewed", "approved", "declined"]
     issue_url: str | None
-    write_state: str | None
+    write_state: WriteState | None
 
 
 class RouteGroupDTO(WebModel):
-    key: str
+    key: Route
     label: str
     description: str
-    candidates: tuple[CandidateDTO, ...]
+    routed_results: tuple[RoutedResultDTO, ...]
 
 
 class TrustDTO(WebModel):
@@ -259,11 +300,11 @@ class RecordingSummaryDTO(WebModel):
     media_type: str
     size_bytes: int
     duration_seconds: float
-    status: str
+    status: RecordingStatus
     stage: StageDTO
     stages: tuple[StageDTO, ...]
     failure: FailureDTO | None
-    candidate_count: int
+    routed_result_count: int
     updated_at: str
 
 
@@ -313,7 +354,7 @@ class ApprovalPreviewDTO(WebModel):
 
 
 class ActionDTO(WebModel):
-    status: str
+    status: Literal["reviewed", "published"]
     message: str
     recording: RecordingDetailDTO
 
@@ -326,9 +367,9 @@ class RecordingState:
     size_bytes: int
     duration_seconds: float
     source_path: Path
-    status: str = "uploaded"
-    current_stage: str = "upload"
-    stage_states: dict[str, str] = field(default_factory=lambda: {key: "pending" for key in STAGE_KEYS})
+    status: RecordingStatus = "uploaded"
+    current_stage: StageKey = "upload"
+    stage_states: dict[StageKey, StageState] = field(default_factory=lambda: {key: "pending" for key in STAGE_KEYS})
     failure: FailureDTO | None = None
     updated_at: str = ""
     future: Future[None] | None = None
@@ -340,7 +381,7 @@ class WebRuntime:
         self,
         settings: WebSettings,
         *,
-        gemini_client: object | None = None,
+        gemini_client: GeminiClient | None = None,
         github_gateway: IssueGateway | None = None,
     ) -> None:
         self.settings = settings
@@ -374,8 +415,8 @@ class WebRuntime:
                 if not _source_is_allowed(source_path, self.settings) or not source_path.is_file():
                     continue
                 stage_states = _safe_stage_states(data.get("stage_states"))
-                raw_current_stage = data.get("current_stage", "upload")
-                current_stage = raw_current_stage if isinstance(raw_current_stage, str) and raw_current_stage in STAGE_KEYS else "upload"
+                current_stage = _stage_key(data.get("current_stage")) or "upload"
+                status = _recording_status(data.get("status")) or "uploaded"
                 state = RecordingState(
                     recording_id=recording_id,
                     filename=str(data["filename"]),
@@ -383,7 +424,7 @@ class WebRuntime:
                     size_bytes=int(data["size_bytes"]),
                     duration_seconds=float(data["duration_seconds"]),
                     source_path=source_path,
-                    status=str(data.get("status", "uploaded")),
+                    status=status,
                     current_stage=current_stage,
                     stage_states=stage_states,
                     updated_at=str(data.get("updated_at", "")),
@@ -400,7 +441,7 @@ class WebRuntime:
                             message=FAILURE_MESSAGES["fingerprint_mismatch"],
                             retryable=False,
                         )
-                ledger_path = self._ledger_path_for(state)
+                ledger_path = self.ledger_path_for(state)
                 if ledger_path.is_file() and (
                     state.failure is None
                     or state.failure.code in PUBLISH_FAILURE_CODES
@@ -482,12 +523,21 @@ class WebRuntime:
             except (LedgerInvalid, OSError, InvalidInput, ValueError):
                 continue
 
-    def _ledger_path_for(self, state: RecordingState) -> Path:
+    def ledger_path_for(self, state: RecordingState) -> Path:
         try:
             source = file_sha256(state.source_path)
         except OSError:
             return self.settings.output_root / "missing" / "ledger.json"
         return self.settings.output_root / source / "ledger.json"
+
+    def evidence_frame_path_for(self, state: RecordingState, frame: EvidenceFrameRecord) -> Path | None:
+        if frame.status != "extracted" or frame.path is None:
+            return None
+        path = Path(frame.path).resolve()
+        frame_root = (self.ledger_path_for(state).parent / "evidence-frames").resolve()
+        if not _inside(path, frame_root) or not path.is_file():
+            return None
+        return path
 
     def _metadata(self, state: RecordingState) -> dict[str, object]:
         return {
@@ -540,15 +590,16 @@ class WebRuntime:
     def update_stage(self, recording_id: str, stage: str) -> None:
         if stage == "input_validation":
             stage = "upload"
-        if stage not in STAGE_LABELS:
+        stage_key = _stage_key(stage)
+        if stage_key is None:
             return
         with self.lock:
             state = self.recordings[recording_id]
             previous = state.current_stage
-            if previous in state.stage_states and previous != stage:
+            if previous != stage_key:
                 state.stage_states[previous] = "completed"
-            state.current_stage = stage
-            state.stage_states[stage] = "running"
+            state.current_stage = stage_key
+            state.stage_states[stage_key] = "running"
             self.persist(state)
 
     def submit(self, recording_id: str, *, reanalysis: bool) -> None:
@@ -576,7 +627,7 @@ class WebRuntime:
             triage_recording(
                 state.source_path,
                 self.settings.output_root,
-                client=cast(Any, self.gemini_client),
+                client=self.gemini_client,
                 reanalyze=reanalysis,
                 prompt=PROMPT,
                 project_context=project_context,
@@ -608,13 +659,30 @@ def _inside(path: Path, root: Path) -> bool:
     return True
 
 
-def _safe_stage_states(value: object) -> dict[str, str]:
+def _stage_key(value: object) -> StageKey | None:
+    return value if isinstance(value, str) and value in STAGE_LABELS else None
+
+
+def _recording_status(value: object) -> RecordingStatus | None:
+    statuses: tuple[RecordingStatus, ...] = (
+        "uploaded",
+        "analyzing",
+        "ready_for_review",
+        "publishing",
+        "published",
+        "failed",
+    )
+    return value if isinstance(value, str) and value in statuses else None
+
+
+def _safe_stage_states(value: object) -> dict[StageKey, StageState]:
     if not isinstance(value, dict):
         return {key: "pending" for key in STAGE_KEYS}
-    return {
-        key: candidate if isinstance(candidate := value.get(key), str) and candidate in STAGE_STATES else "pending"
-        for key in STAGE_KEYS
-    }
+    states: dict[StageKey, StageState] = {}
+    for key in STAGE_KEYS:
+        candidate = value.get(key)
+        states[key] = candidate if isinstance(candidate, str) and candidate in STAGE_STATES else "pending"
+    return states
 
 
 def _safe_recording_id(value: object) -> str | None:
@@ -707,7 +775,7 @@ def _failure_for(error: BaseException) -> FailureDTO:
     return FailureDTO(code=code, message=FAILURE_MESSAGES[code], retryable=code in RETRYABLE_FAILURES)
 
 
-def _latest_policy(ledger: RunLedger) -> tuple[dict[str, Any], PolicyResult] | None:
+def _latest_policy(ledger: RunLedger) -> tuple[dict[str, object], PolicyResult] | None:
     attempts = ledger.attempts
     if not attempts:
         return None
@@ -736,7 +804,7 @@ def _frame_dto(recording_id: str, frame: EvidenceFrameRecord) -> EvidenceFrameDT
     )
 
 
-def _span_dto(span: Any) -> EvidenceSpanDTO:
+def _span_dto(span: EvidenceSpan) -> EvidenceSpanDTO:
     return EvidenceSpanDTO(
         start_seconds=span.start_seconds,
         end_seconds=span.end_seconds,
@@ -749,8 +817,13 @@ def _span_dto(span: Any) -> EvidenceSpanDTO:
     )
 
 
+def _approval_eligible(candidate: RoutedResult) -> bool:
+    definition = ROUTE_DEFINITIONS_BY_KEY[candidate.route]
+    return definition.approval_eligible and (candidate.route != "candidate" or candidate.approval_eligible)
+
+
 def _candidate_decision(ledger: RunLedger, candidate: RoutedResult, destination: str | None) -> Literal["unreviewed", "approved", "declined"]:
-    if destination is not None and candidate.route in {"candidate", "manual_review"}:
+    if destination is not None and _approval_eligible(candidate):
         try:
             approval = ledger.latest_approval_for(candidate_id=candidate.candidate_id, destination_repository=destination)
             if approval is not None and approval.candidate_snapshot_hash == routed_result_hash(candidate):
@@ -774,33 +847,34 @@ def _candidate_decision(ledger: RunLedger, candidate: RoutedResult, destination:
     return "unreviewed"
 
 
-def _candidate_dto(
+def _routed_result_dto(
     recording_id: str,
     ledger: RunLedger,
     candidate: RoutedResult,
     frames: Mapping[str, EvidenceFrameRecord],
     destination: str | None,
-) -> CandidateDTO:
+) -> RoutedResultDTO:
     quotes = tuple(dict.fromkeys(span.client_quote for span in candidate.evidence if span.client_quote))
     observations = tuple(dict.fromkeys(span.visual_observation for span in candidate.evidence if span.visual_observation))
-    write_state: str | None = None
+    write_state: WriteState | None = None
     issue_url: str | None = None
     for event in reversed(ledger.latest_write_attempts()):
         if event.get("candidate_id") == candidate.candidate_id:
-            value = event.get("state")
-            write_state = value if isinstance(value, str) else None
+            write_state = _write_state(event.get("state"))
             break
     if destination is not None:
         for record in ledger.issue_records:
             if record.candidate_id == candidate.candidate_id and record.destination_repository == destination:
                 issue_url = _safe_external_url(record.html_url)
                 break
-    return CandidateDTO(
+    route_definition = ROUTE_DEFINITIONS_BY_KEY[candidate.route]
+    approval_eligible = _approval_eligible(candidate)
+    return RoutedResultDTO(
         candidate_id=candidate.candidate_id,
         topic_key=candidate.topic_key,
         route=candidate.route,
-        route_label=ROUTE_LABELS[candidate.route],
-        route_description=ROUTE_DESCRIPTIONS[candidate.route],
+        route_label=route_definition.label,
+        route_description=route_definition.description,
         type=candidate.type,
         intent=candidate.intent,
         confidence=candidate.confidence,
@@ -818,8 +892,8 @@ def _candidate_dto(
         visual_observation="\n".join(observations) or None,
         evidence_spans=tuple(_span_dto(span) for span in candidate.evidence),
         evidence_frame=_frame_dto(recording_id, frames[candidate.candidate_id]) if candidate.candidate_id in frames else None,
-        approval_eligible=candidate.approval_eligible,
-        editable_fields=tuple(sorted(EDITABLE_FIELDS)) if candidate.route in {"candidate", "manual_review"} else (),
+        approval_eligible=approval_eligible,
+        editable_fields=tuple(sorted(EDITABLE_FIELDS)) if approval_eligible else (),
         decision=_candidate_decision(ledger, candidate, destination),
         issue_url=issue_url,
         write_state=write_state,
@@ -838,7 +912,7 @@ def _safe_destination(settings: WebSettings) -> str | None:
 def _ledger_for_state(runtime: WebRuntime, state: RecordingState) -> RunLedger:
     if state.failure is not None and state.failure.code not in PUBLISH_FAILURE_CODES:
         raise HTTPException(status_code=409, detail={"code": state.failure.code, "message": state.failure.message})
-    path = runtime._ledger_path_for(state)
+    path = runtime.ledger_path_for(state)
     if not path.is_file():
         raise HTTPException(status_code=409, detail={"code": "ledger_unavailable", "message": "This recording has no completed local Run Ledger yet."})
     try:
@@ -848,22 +922,22 @@ def _ledger_for_state(runtime: WebRuntime, state: RecordingState) -> RunLedger:
 
 
 def _summary(runtime: WebRuntime, state: RecordingState) -> RecordingSummaryDTO:
-    candidate_count = 0
+    routed_result_count = 0
     try:
         latest = _latest_policy(_ledger_for_state(runtime, state))
-        candidate_count = len(latest[1].results) if latest is not None else 0
+        routed_result_count = len(latest[1].results) if latest is not None else 0
     except HTTPException:
         pass
     stage = StageDTO(
         key=state.current_stage,
-        label=STAGE_LABELS.get(state.current_stage, "Ready for review"),
-        state=cast(Literal["pending", "running", "completed", "failed"], state.stage_states.get(state.current_stage, "pending")),
+        label=STAGE_LABELS[state.current_stage],
+        state=state.stage_states.get(state.current_stage, "pending"),
     )
     stages = tuple(
         StageDTO(
             key=key,
             label=label,
-            state=cast(Literal["pending", "running", "completed", "failed"], state.stage_states.get(key, "pending")),
+            state=state.stage_states.get(key, "pending"),
         )
         for key, label in STAGE_LABELS.items()
     )
@@ -877,7 +951,7 @@ def _summary(runtime: WebRuntime, state: RecordingState) -> RecordingSummaryDTO:
         stage=stage,
         stages=stages,
         failure=state.failure,
-        candidate_count=candidate_count,
+        routed_result_count=routed_result_count,
         updated_at=state.updated_at,
     )
 
@@ -890,7 +964,7 @@ def _detail(runtime: WebRuntime, state: RecordingState) -> RecordingDetailDTO:
     issue_records: tuple[IssueRecordDTO, ...] = ()
     video_summary: str | None = None
     ledger: RunLedger | None = None
-    latest: tuple[dict[str, Any], PolicyResult] | None = None
+    latest: tuple[dict[str, object], PolicyResult] | None = None
     try:
         ledger = _ledger_for_state(runtime, state)
         latest = _latest_policy(ledger)
@@ -904,20 +978,30 @@ def _detail(runtime: WebRuntime, state: RecordingState) -> RecordingDetailDTO:
         frames = ledger.evidence_frames_for_attempt(attempt_id) if attempt_id else ()
         frame_map = {frame.candidate_id: frame for frame in frames}
         destination = _safe_destination(runtime.settings)
-        candidates = tuple(_candidate_dto(state.recording_id, ledger, candidate, frame_map, destination) for candidate in policy.results)
-        for route in ("candidate", "clarification_request", "manual_review", "withheld_result"):
-            grouped = tuple(candidate for candidate in candidates if candidate.route == route)
-            groups.append(RouteGroupDTO(key=route, label=ROUTE_LABELS[route], description=ROUTE_DESCRIPTIONS[route], candidates=grouped))
+        routed_results = tuple(_routed_result_dto(state.recording_id, ledger, result, frame_map, destination) for result in policy.results)
+        for definition in ROUTE_DEFINITIONS:
+            grouped = tuple(result for result in routed_results if result.route == definition.key)
+            groups.append(
+                RouteGroupDTO(
+                    key=definition.key,
+                    label=definition.label,
+                    description=definition.description,
+                    routed_results=grouped,
+                )
+            )
         analysis = attempt.get("analysis")
         if isinstance(analysis, dict) and isinstance(analysis.get("video_summary"), str):
             video_summary = analysis["video_summary"]
         usage = attempt.get("gemini_usage", {})
         safe_usage = {key: int(value) for key, value in usage.items() if isinstance(key, str) and isinstance(value, int) and value >= 0} if isinstance(usage, dict) else {}
+        processing_pair_count = attempt.get("processing_pair_count")
+        if not isinstance(processing_pair_count, int):
+            processing_pair_count = None
         trust = TrustDTO(
             source_sha256=ledger.source_sha256,
             duration_seconds=state.duration_seconds,
             verified=attempt.get("status") == "verified",
-            processing_pair_count=attempt.get("processing_pair_count") if isinstance(attempt.get("processing_pair_count"), int) else None,
+            processing_pair_count=processing_pair_count,
             model_usage=safe_usage,
             attempt_id=attempt_id,
             ledger_location=f"{ledger.source_sha256}/ledger.json",
@@ -943,14 +1027,10 @@ def _detail(runtime: WebRuntime, state: RecordingState) -> RecordingDetailDTO:
     )
 
 
-def _runtime_from_request(runtime: WebRuntime = Depends()) -> WebRuntime:
-    return runtime
-
-
 def create_app(
     settings: WebSettings | None = None,
     *,
-    gemini_client: object | None = None,
+    gemini_client: GeminiClient | None = None,
     github_gateway: IssueGateway | None = None,
 ) -> FastAPI:
     """Create the local app with replaceable analysis and GitHub gateways."""
@@ -966,7 +1046,6 @@ def create_app(
 
     app = FastAPI(title="Feedback Recording review", docs_url=None, redoc_url=None, lifespan=lifespan)
     app.state.runtime = runtime
-    app.dependency_overrides[_runtime_from_request] = lambda: runtime
 
     @app.get("/api/health")
     def health() -> dict[str, str]:
@@ -1069,13 +1148,12 @@ def create_app(
         frame_record = next((value for value in ledger.evidence_frames_for_attempt(attempt_id) if value.candidate_id == candidate_id), None)
         if frame_record is None or frame_record.status != "extracted" or frame_record.path is None:
             raise HTTPException(status_code=404, detail={"code": "frame_not_found", "message": "Evidence Frame is unavailable."})
-        path = Path(frame_record.path).resolve()
-        frame_root = (runtime._ledger_path_for(state).parent / "evidence-frames").resolve()
-        if not _inside(path, frame_root) or not path.is_file():
+        path = runtime.evidence_frame_path_for(state, frame_record)
+        if path is None:
             raise HTTPException(status_code=404, detail={"code": "frame_not_found", "message": "Evidence Frame is unavailable."})
         return FileResponse(path, media_type="image/png")
 
-    def candidate_for(runtime_state: RecordingState, candidate_id: str) -> tuple[RunLedger, dict[str, Any], RoutedResult]:
+    def routed_result_for(runtime_state: RecordingState, candidate_id: str) -> tuple[RunLedger, dict[str, object], RoutedResult]:
         ledger = _ledger_for_state(runtime, runtime_state)
         latest = _latest_policy(ledger)
         if latest is None:
@@ -1084,59 +1162,25 @@ def create_app(
         for candidate in policy.results:
             if candidate.candidate_id == candidate_id:
                 return ledger, attempt, candidate
-        raise HTTPException(status_code=404, detail={"code": "candidate_not_found", "message": "Candidate not found."})
+        raise HTTPException(status_code=404, detail={"code": "routed_result_not_found", "message": "Routed result not found."})
 
-    @app.get("/api/recordings/{recording_id}/candidates/{candidate_id}/approval-preview", response_model=ApprovalPreviewDTO)
-    def approval_preview(recording_id: str, candidate_id: str) -> ApprovalPreviewDTO:
-        state = runtime.state(recording_id)
-        _, _, candidate = candidate_for(state, candidate_id)
-        destination = _safe_destination(runtime.settings)
-        if destination is None or candidate.route not in {"candidate", "manual_review"}:
-            raise HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]})
-        if candidate.route == "manual_review":
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "manual_review_confirmation_required",
-                    "message": FAILURE_MESSAGES["manual_review_confirmation_required"],
-                },
-            )
-        try:
-            approval = build_approval(
-                file_sha256(state.source_path),
-                candidate,
-                destination,
-                manual_review_confirmed=False,
-            )
-        except ValueError as error:
-            raise HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]}) from error
-        return ApprovalPreviewDTO(
-            candidate_id=candidate_id,
-            destination_repository=destination,
-            payload=IssuePayloadDTO(title=approval.payload.title, body=approval.payload.body),
-            editable_fields=tuple(sorted(EDITABLE_FIELDS)),
-            manual_review_confirmed=approval.manual_review_confirmed,
-        )
-
-    @app.post("/api/recordings/{recording_id}/candidates/{candidate_id}/approval-preview", response_model=ApprovalPreviewDTO)
+    @app.post("/api/recordings/{recording_id}/routed-results/{candidate_id}/approval-preview", response_model=ApprovalPreviewDTO)
     def approval_preview_with_changes(recording_id: str, candidate_id: str, request: ReviewRequest) -> ApprovalPreviewDTO:
         state = runtime.state(recording_id)
-        _, _, candidate = candidate_for(state, candidate_id)
+        _, _, candidate = routed_result_for(state, candidate_id)
         destination = _safe_destination(runtime.settings)
-        if request.action != "approve" or destination is None or candidate.route not in {"candidate", "manual_review"}:
+        if request.action != "approve" or destination is None or not _approval_eligible(candidate):
             raise HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]})
-        if candidate.route == "manual_review" and not (request.manual_review_confirmed or request.changes):
-            raise HTTPException(status_code=409, detail={"code": "manual_review_confirmation_required", "message": FAILURE_MESSAGES["manual_review_confirmation_required"]})
         try:
             approval = build_approval(
                 file_sha256(state.source_path),
                 candidate,
                 destination,
                 changes=request.changes or None,
-                manual_review_confirmed=request.manual_review_confirmed or bool(request.changes),
+                manual_review_confirmed=request.manual_review_confirmed,
             )
-        except ValueError as error:
-            raise HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]}) from error
+        except (ApprovalError, ValueError) as error:
+            raise _review_http_error(error) from error
         return ApprovalPreviewDTO(
             candidate_id=candidate_id,
             destination_repository=destination,
@@ -1145,15 +1189,13 @@ def create_app(
             manual_review_confirmed=approval.manual_review_confirmed,
         )
 
-    @app.post("/api/recordings/{recording_id}/candidates/{candidate_id}/review", response_model=ActionDTO)
+    @app.post("/api/recordings/{recording_id}/routed-results/{candidate_id}/review", response_model=ActionDTO)
     def review(recording_id: str, candidate_id: str, request: ReviewRequest) -> ActionDTO:
         state = runtime.state(recording_id)
-        ledger, attempt, candidate = candidate_for(state, candidate_id)
+        ledger, attempt, candidate = routed_result_for(state, candidate_id)
         destination = _safe_destination(runtime.settings)
-        if destination is None or candidate.route not in {"candidate", "manual_review"}:
+        if destination is None or not _approval_eligible(candidate):
             raise HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]})
-        if request.action == "approve" and candidate.route == "manual_review" and not (request.manual_review_confirmed or request.changes):
-            raise HTTPException(status_code=409, detail={"code": "manual_review_confirmation_required", "message": FAILURE_MESSAGES["manual_review_confirmation_required"]})
         try:
             source_sha256 = file_sha256(state.source_path)
             coordinator = WriteCoordinator(ledger, runtime.github_gateway or _NoGateway())
@@ -1165,11 +1207,13 @@ def create_app(
                 decision_fn=lambda _: ReviewDecision(
                     request.action,
                     request.changes,
-                    request.manual_review_confirmed or bool(request.changes),
+                    request.manual_review_confirmed,
                 ),
                 operator_label=request.operator_label,
                 require_fresh_review=bool(request.changes),
             )
+        except ApprovalError as error:
+            raise _review_http_error(error) from error
         except (ValueError, LedgerInvalid, LedgerLocked) as error:
             raise HTTPException(status_code=409, detail={"code": "review_not_allowed", "message": FAILURE_MESSAGES["review_not_allowed"]}) from error
         return ActionDTO(status="reviewed", message="Review decision saved locally.", recording=_detail(runtime, state))
@@ -1187,7 +1231,7 @@ def create_app(
             failure = FailureDTO(code="github_configuration_missing", message=FAILURE_MESSAGES["github_configuration_missing"], retryable=True)
             record_publish_failure(failure)
             raise HTTPException(status_code=409, detail=failure.model_dump(mode="json"))
-        ledger, attempt, _ = candidate_for(state, request.candidate_ids[0])
+        ledger, attempt, _ = routed_result_for(state, request.candidate_ids[0])
         destination = _safe_destination(runtime.settings)
         if destination is None:
             failure = FailureDTO(code="github_configuration_missing", message=FAILURE_MESSAGES["github_configuration_missing"], retryable=True)
@@ -1206,7 +1250,10 @@ def create_app(
             if runtime.github_gateway is not None:
                 gateway = runtime.github_gateway
             else:
-                gateway = GitHubIssueClient(cast(str, runtime.settings.github_token))
+                github_token = runtime.settings.github_token
+                if github_token is None:
+                    raise RuntimeError("GitHub publishing is not configured")
+                gateway = GitHubIssueClient(github_token)
             with runtime.lock:
                 state.status = "publishing"
                 state.failure = None
@@ -1219,14 +1266,6 @@ def create_app(
                 confirm_no_issue=request.confirm_no_issue,
                 canonical_issue_selections=request.canonical_issue_selections,
             )
-        except ExternalWriteFailure as error:
-            failure = _failure_for(error)
-            record_publish_failure(failure)
-            raise HTTPException(status_code=409, detail=failure.model_dump(mode="json")) from error
-        except (GitHubApiError, ValueError, LedgerInvalid, LedgerLocked) as error:
-            failure = _failure_for(error)
-            record_publish_failure(failure)
-            raise HTTPException(status_code=409, detail=failure.model_dump(mode="json")) from error
         except Exception as error:
             failure = _failure_for(error)
             record_publish_failure(failure)
@@ -1243,14 +1282,11 @@ def create_app(
 
 
 class _NoGateway:
-    def find_marker(self, destination_repository: str, marker: str) -> tuple[Any, ...]:
+    def find_marker(self, destination_repository: str, marker: str) -> tuple[GitHubIssue, ...]:
         raise GitHubApiError("GitHub publishing is not configured", definitive=False)
 
-    def get_issue(self, destination_repository: str, issue_number: int) -> Any:
+    def get_issue(self, destination_repository: str, issue_number: int) -> GitHubIssue:
         raise GitHubApiError("GitHub publishing is not configured", definitive=False)
 
-    def create_issue(self, destination_repository: str, payload: Any) -> Any:
+    def create_issue(self, destination_repository: str, payload: IssuePayload) -> GitHubIssue:
         raise GitHubApiError("GitHub publishing is not configured", definitive=False)
-
-
-app = create_app()

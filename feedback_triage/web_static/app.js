@@ -139,18 +139,21 @@
     badge.textContent = config.gemini_configured ? (config.destination_repository ? `Destination: ${config.destination_repository}` : "Gemini ready | publishing not configured") : "Gemini configuration required";
     if (!config.gemini_configured) badge.classList.add("warning");
   }
+  function routedResults(group) { return group.routed_results || []; }
+  function allRoutedResults(groups) { return groups.flatMap((group) => routedResults(group)); }
+  function approvalEligible(candidate) { return candidate.approval_eligible === true; }
   function renderReview(recording) {
     const groups = recording.groups || [];
-    const all = groups.flatMap((group) => group.candidates || []);
+    const all = allRoutedResults(groups);
     $("video-summary").textContent = recording.video_summary || "Verified analysis is ready for review.";
-    $("candidate-count").textContent = `${all.length} routed result${all.length === 1 ? "" : "s"}`;
+    $("routed-result-count").textContent = `${all.length} routed result${all.length === 1 ? "" : "s"}`;
     $("timeline-duration").textContent = timecode(recording.duration_seconds);
     $("timeline-end").textContent = timecode(recording.duration_seconds);
     $("route-groups").innerHTML = groups.map((group) => `
       <section class="route-group" aria-labelledby="group-${escapeHtml(group.key)}">
-        <h4 id="group-${escapeHtml(group.key)}">${escapeHtml(group.label)} <span>${group.candidates.length}</span></h4>
+        <h4 id="group-${escapeHtml(group.key)}">${escapeHtml(group.label)} <span>${routedResults(group).length}</span></h4>
         <p class="route-description">${escapeHtml(group.description)}</p>
-        ${group.candidates.length ? group.candidates.map((candidate) => `
+        ${routedResults(group).length ? routedResults(group).map((candidate) => `
           <button class="queue-card ${escapeHtml(candidate.route)} ${candidate.candidate_id === state.selectedId ? "is-selected" : ""}" data-candidate-id="${escapeHtml(candidate.candidate_id)}" type="button">
             <span class="queue-card-title"><span>${escapeHtml(candidate.title)}</span><span>${escapeHtml(candidate.confidence)}</span></span>
             <span class="queue-card-meta">${escapeHtml(candidate.type)} | ${escapeHtml(candidate.route_label)}${candidate.component ? ` | ${escapeHtml(candidate.component)}` : ""}${candidate.reason_code ? ` | ${escapeHtml(candidate.reason_code)}` : ""}</span>
@@ -161,7 +164,7 @@
       </section>`).join("");
     $("route-groups").querySelectorAll("[data-candidate-id]").forEach((button) => button.addEventListener("click", () => selectCandidate(button.dataset.candidateId)));
     renderTimeline(recording, all);
-    const approved = all.filter((candidate) => candidate.decision === "approved" && (candidate.approval_eligible || candidate.route === "manual_review"));
+    const approved = all.filter((candidate) => candidate.decision === "approved" && approvalEligible(candidate));
     $("publish-button").hidden = approved.length === 0 || recording.status === "published";
     const hasFailedWrites = all.some((candidate) => candidate.write_state === "write_failed");
     const hasUncertainWrites = all.some((candidate) => candidate.write_state === "write_uncertain");
@@ -193,12 +196,20 @@
     const selections = canonicalSelections(candidates);
     $("publish-button").disabled = conflicts.some((candidate) => !selections[candidate.candidate_id]);
   }
-  function renderTimeline(recording, candidates) {
+  function renderTimeline(recording, routedResultsList) {
     const duration = Math.max(0.001, recording.duration_seconds);
-    $("timeline-track").innerHTML = candidates.flatMap((candidate) => candidate.evidence_spans.map((span, index) => {
-      const position = Math.min(100, Math.max(0, (span.start_seconds / duration) * 100));
-      return `<button class="timeline-marker ${escapeHtml(candidate.route)} ${candidate.candidate_id === state.selectedId ? "is-selected" : ""}" style="left:${position}%" data-candidate-id="${escapeHtml(candidate.candidate_id)}" data-seconds="${span.start_seconds}" type="button" aria-label="${escapeHtml(candidate.route_label)} ${escapeHtml(candidate.title)}, span ${index + 1} at ${escapeHtml(span.start_timecode)}"><span>${escapeHtml(span.start_timecode)}</span></button>`;
-    })).join("");
+    $("timeline-track").innerHTML = routedResultsList.flatMap((candidate) => {
+      if (candidate.evidence_spans.length) {
+        return candidate.evidence_spans.map((span, index) => {
+          const position = Math.min(100, Math.max(0, (span.start_seconds / duration) * 100));
+          return `<button class="timeline-marker ${escapeHtml(candidate.route)} ${candidate.candidate_id === state.selectedId ? "is-selected" : ""}" style="left:${position}%" data-candidate-id="${escapeHtml(candidate.candidate_id)}" data-seconds="${span.start_seconds}" type="button" aria-label="${escapeHtml(candidate.route_label)} ${escapeHtml(candidate.title)}, span ${index + 1} at ${escapeHtml(span.start_timecode)}"><span>${escapeHtml(span.start_timecode)}</span></button>`;
+        });
+      }
+      const seconds = candidate.evidence_frame_seconds;
+      const label = timecode(seconds);
+      const position = Math.min(100, Math.max(0, (seconds / duration) * 100));
+      return `<button class="timeline-marker ${escapeHtml(candidate.route)} frame-fallback ${candidate.candidate_id === state.selectedId ? "is-selected" : ""}" style="left:${position}%" data-candidate-id="${escapeHtml(candidate.candidate_id)}" data-seconds="${seconds}" type="button" aria-label="${escapeHtml(candidate.route_label)} ${escapeHtml(candidate.title)}, based on Evidence Frame at ${escapeHtml(label)}"><span>${escapeHtml(label)} · frame</span></button>`;
+    }).join("");
     $("timeline-track").querySelectorAll("[data-candidate-id]").forEach((marker) => marker.addEventListener("click", () => {
       selectCandidate(marker.dataset.candidateId);
       seek(Number(marker.dataset.seconds));
@@ -214,7 +225,7 @@
   }
   function selectCandidate(candidateId) {
     state.selectedId = candidateId;
-    const candidate = state.recording.groups.flatMap((group) => group.candidates).find((item) => item.candidate_id === candidateId);
+    const candidate = allRoutedResults(state.recording.groups).find((item) => item.candidate_id === candidateId);
     if (candidate) { renderDetail(candidate); renderReview(state.recording); announce(`Selected ${candidate.route_label}: ${candidate.title}.`); }
   }
   function seek(seconds) {
@@ -223,12 +234,12 @@
   }
   function renderDetail(candidate) {
     $("empty-detail").hidden = true;
-    $("candidate-detail").hidden = false;
+    $("routed-result-detail").hidden = false;
     $("detail-route").textContent = candidate.route_label;
     const spans = candidate.evidence_spans.map((span) => `<button type="button" class="evidence-button" data-seconds="${span.start_seconds}"><span class="evidence-time">${escapeHtml(span.start_timecode)} to ${escapeHtml(span.end_timecode)}<br /><small>${span.start_seconds.toFixed(3)}s to ${span.end_seconds.toFixed(3)}s</small></span><span class="evidence-copy">${escapeHtml(span.client_quote || span.visual_observation || "Evidence span")}</span></button>`).join("");
-    const editable = candidate.approval_eligible || candidate.route === "manual_review";
-    $("candidate-detail").innerHTML = `
-      <h3 class="candidate-title">${escapeHtml(candidate.title)}</h3>
+    const editable = approvalEligible(candidate);
+    $("routed-result-detail").innerHTML = `
+      <h3 class="routed-result-title">${escapeHtml(candidate.title)}</h3>
        <div class="detail-meta"><span class="meta-chip">${escapeHtml(candidate.type)}</span><span class="meta-chip">${escapeHtml(candidate.intent)}</span><span class="meta-chip">${escapeHtml(candidate.confidence)} confidence</span><span class="meta-chip">${escapeHtml(candidate.candidate_id)}</span><span class="meta-chip">Topic: ${escapeHtml(candidate.topic_key)}</span></div>
       ${candidate.component ? `<div class="detail-section"><h4>Component</h4><p>${escapeHtml(candidate.component)}</p></div>` : ""}
        ${candidate.reason_code ? `<div class="detail-section"><h4>Policy reason</h4><p>${escapeHtml(candidate.reason_code)}</p></div>` : ""}
@@ -245,56 +256,56 @@
       ${editable ? detailForm(candidate) : `<p class="immutable-note">This route is immutable here. Identity, route, evidence, provenance, and policy reasons cannot be edited or approved.</p>`}
       ${candidate.issue_url ? `<div class="detail-section"><h4>Issue Record</h4><a class="issue-link" href="${escapeHtml(candidate.issue_url)}" target="_blank" rel="noreferrer">Open linked Issue</a></div>` : ""}
     `;
-     $("candidate-detail").querySelectorAll(".evidence-button").forEach((button) => button.addEventListener("click", () => seek(Number(button.dataset.seconds))));
-     $("candidate-detail").querySelectorAll("[data-frame-seconds]").forEach((button) => button.addEventListener("click", () => seek(Number(button.dataset.frameSeconds))));
-    $("candidate-detail").querySelector("[data-action=preview]")?.addEventListener("click", () => openApprovalPreview(candidate));
-    $("candidate-detail").querySelector("[data-action=decline]")?.addEventListener("click", () => submitDecision(candidate, "decline"));
+    $("routed-result-detail").querySelectorAll(".evidence-button").forEach((button) => button.addEventListener("click", () => seek(Number(button.dataset.seconds))));
+    $("routed-result-detail").querySelectorAll("[data-frame-seconds]").forEach((button) => button.addEventListener("click", () => seek(Number(button.dataset.frameSeconds))));
+    $("routed-result-detail").querySelector("[data-action=preview]")?.addEventListener("click", () => openApprovalPreview(candidate));
+    $("routed-result-detail").querySelector("[data-action=decline]")?.addEventListener("click", () => submitDecision(candidate, "decline"));
   }
-   function detailForm(candidate) {
-     const values = { title: candidate.title, summary: candidate.summary, requested_outcome: candidate.requested_outcome || "", component: candidate.component || "", acceptance_criteria: candidate.acceptance_criteria.join("\n") };
-     const confirmation = candidate.route === "manual_review" ? `<label class="confirmation-row"><input id="manual-review-confirmed" type="checkbox" /> I explicitly confirm this Manual Review result.</label>` : "";
-     return `<div class="detail-section"><h4>Approval prose</h4><form class="detail-form" id="detail-form"><label for="edit-title">Title</label><input id="edit-title" name="title" value="${escapeHtml(values.title)}" /><label for="edit-summary">Summary</label><textarea id="edit-summary" name="summary">${escapeHtml(values.summary)}</textarea><label for="edit-outcome">Requested outcome</label><textarea id="edit-outcome" name="requested_outcome">${escapeHtml(values.requested_outcome)}</textarea><label for="edit-component">Component</label><input id="edit-component" name="component" value="${escapeHtml(values.component)}" /><label for="edit-criteria">Acceptance criteria (one per line)</label><textarea class="criteria-input" id="edit-criteria" name="acceptance_criteria">${escapeHtml(values.acceptance_criteria)}</textarea>${confirmation}<div class="detail-actions"><button class="button button-primary" data-action="preview" type="button">Preview Approval</button><button class="button button-secondary" data-action="decline" type="button">Decline</button></div></form></div>`;
-   }
-   function formChanges(candidate) {
-     const form = $("detail-form");
-     if (!form) return {};
-     const data = new FormData(form);
-     const changes = {};
-     const current = { title: candidate.title, summary: candidate.summary, requested_outcome: candidate.requested_outcome || "", component: candidate.component || "" };
-     ["title", "summary", "requested_outcome", "component"].forEach((key) => { const value = String(data.get(key) || "").trim(); if (value !== current[key]) changes[key] = value; });
-     const criteria = String(data.get("acceptance_criteria") || "").split("\n").map((item) => item.trim()).filter(Boolean);
-     if (criteria.join("\n") !== candidate.acceptance_criteria.join("\n")) changes.acceptance_criteria = criteria;
-     return changes;
-   }
-   function manualReviewConfirmed(candidate) { return candidate.route !== "manual_review" || Boolean($("manual-review-confirmed")?.checked); }
-   async function openApprovalPreview(candidate) {
-     try {
-       const changes = formChanges(candidate);
-       const payload = await api(`/api/recordings/${state.recording.recording_id}/candidates/${candidate.candidate_id}/approval-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve", changes, manual_review_confirmed: manualReviewConfirmed(candidate) }) });
-       state.preview = { candidate, changes, manual: candidate.route === "manual_review" };
+  function detailForm(candidate) {
+    const values = { title: candidate.title, summary: candidate.summary, requested_outcome: candidate.requested_outcome || "", component: candidate.component || "", acceptance_criteria: candidate.acceptance_criteria.join("\n") };
+    const confirmation = candidate.route === "manual_review" ? `<label class="confirmation-row"><input id="manual-review-confirmed" type="checkbox" /> I explicitly confirm this Manual Review result.</label>` : "";
+    return `<div class="detail-section"><h4>Approval prose</h4><form class="detail-form" id="detail-form"><label for="edit-title">Title</label><input id="edit-title" name="title" value="${escapeHtml(values.title)}" /><label for="edit-summary">Summary</label><textarea id="edit-summary" name="summary">${escapeHtml(values.summary)}</textarea><label for="edit-outcome">Requested outcome</label><textarea id="edit-outcome" name="requested_outcome">${escapeHtml(values.requested_outcome)}</textarea><label for="edit-component">Component</label><input id="edit-component" name="component" value="${escapeHtml(values.component)}" /><label for="edit-criteria">Acceptance criteria (one per line)</label><textarea class="criteria-input" id="edit-criteria" name="acceptance_criteria">${escapeHtml(values.acceptance_criteria)}</textarea>${confirmation}<div class="detail-actions"><button class="button button-primary" data-action="preview" type="button">Preview Approval</button><button class="button button-secondary" data-action="decline" type="button">Decline</button></div></form></div>`;
+  }
+  function formChanges(candidate) {
+    const form = $("detail-form");
+    if (!form) return {};
+    const data = new FormData(form);
+    const changes = {};
+    const current = { title: candidate.title, summary: candidate.summary, requested_outcome: candidate.requested_outcome || "", component: candidate.component || "" };
+    ["title", "summary", "requested_outcome", "component"].forEach((key) => { const value = String(data.get(key) || "").trim(); if (value !== current[key]) changes[key] = value; });
+    const criteria = String(data.get("acceptance_criteria") || "").split("\n").map((item) => item.trim()).filter(Boolean);
+    if (criteria.join("\n") !== candidate.acceptance_criteria.join("\n")) changes.acceptance_criteria = criteria;
+    return changes;
+  }
+  function manualReviewConfirmed() { return Boolean($("manual-review-confirmed")?.checked); }
+  async function openApprovalPreview(candidate) {
+    try {
+      const changes = formChanges(candidate);
+      const payload = await api(`/api/recordings/${state.recording.recording_id}/routed-results/${candidate.candidate_id}/approval-preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "approve", changes, manual_review_confirmed: manualReviewConfirmed() }) });
+      state.preview = { candidate, changes, manual: candidate.route === "manual_review" };
       $("approval-destination").textContent = `Destination repository: ${payload.destination_repository}`;
       $("approval-title").value = payload.payload.title;
       $("approval-body").value = payload.payload.body;
       $("approval-dialog").showModal();
     } catch (error) { showError($("analysis-error"), error.message); announce(error.message); }
   }
-   async function submitDecision(candidate, action) {
-     const changes = action === "approve" ? formChanges(candidate) : {};
-     try {
-       const recording = await api(`/api/recordings/${state.recording.recording_id}/candidates/${candidate.candidate_id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, changes, manual_review_confirmed: manualReviewConfirmed(candidate), operator_label: null }) });
+  async function submitDecision(candidate, action) {
+    const changes = action === "approve" ? formChanges(candidate) : {};
+    try {
+      const recording = await api(`/api/recordings/${state.recording.recording_id}/routed-results/${candidate.candidate_id}/review`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, changes, manual_review_confirmed: manualReviewConfirmed(), operator_label: null }) });
       setRecording(recording); announce(action === "approve" ? "Approval saved locally." : "Decline saved locally.");
     } catch (error) { showError($("analysis-error"), error.message); announce(error.message); }
   }
   async function publishApproved() {
-    const approved = state.recording.groups.flatMap((group) => group.candidates).filter((candidate) => candidate.decision === "approved" && (candidate.approval_eligible || candidate.route === "manual_review")).map((candidate) => candidate.candidate_id);
+    const approved = allRoutedResults(state.recording.groups).filter((candidate) => candidate.decision === "approved" && approvalEligible(candidate)).map((candidate) => candidate.candidate_id);
     if (!approved.length) return;
     if (!window.confirm(`Publish ${approved.length} approved Issue${approved.length === 1 ? "" : "s"} to ${state.recording.destination_repository || "the configured repository"}?`)) return;
-     const retryFailed = Boolean($("retry-failed").checked);
-     const retryUncertain = Boolean($("retry-uncertain").checked);
-     const confirmNoIssue = Boolean($("confirm-no-issue").checked);
-     if (retryUncertain && !confirmNoIssue) { announce("Confirm that no Issue exists for the exact marker before retrying an uncertain write."); return; }
-      const selections = canonicalSelections(state.recording.groups.flatMap((group) => group.candidates));
-       try { const recording = await api(`/api/recordings/${state.recording.recording_id}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidate_ids: approved, retry_failed: retryFailed, retry_uncertain: retryUncertain, confirm_no_issue: confirmNoIssue, canonical_issue_selections: selections }) }); setRecording(recording); announce("Publishing completed and Issue Records were persisted."); }
+    const retryFailed = Boolean($("retry-failed").checked);
+    const retryUncertain = Boolean($("retry-uncertain").checked);
+    const confirmNoIssue = Boolean($("confirm-no-issue").checked);
+    if (retryUncertain && !confirmNoIssue) { announce("Confirm that no Issue exists for the exact marker before retrying an uncertain write."); return; }
+    const selections = canonicalSelections(allRoutedResults(state.recording.groups));
+    try { const recording = await api(`/api/recordings/${state.recording.recording_id}/publish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidate_ids: approved, retry_failed: retryFailed, retry_uncertain: retryUncertain, confirm_no_issue: confirmNoIssue, canonical_issue_selections: selections }) }); setRecording(recording); announce("Publishing completed and Issue Records were persisted."); }
      catch (error) {
        showError($("analysis-error"), error.message);
        try { setRecording(await api(`/api/recordings/${state.recording.recording_id}`)); } catch (_) { /* Preserve the original visible failure. */ }

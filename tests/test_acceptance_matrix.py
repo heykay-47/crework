@@ -209,7 +209,7 @@ def test_deterministic_review_write_matrix(
             source_sha256=SOURCE_SHA,
             destination_repository=DESTINATION,
             attempt_id=attempt_id,
-            decision_fn=lambda _: ReviewDecision(case.decision),
+            decision_fn=lambda _: ReviewDecision(case.decision, manual_review_confirmed=case.result.route == "manual_review"),
             on_timing=timings.__setitem__,
         )
     else:
@@ -219,7 +219,7 @@ def test_deterministic_review_write_matrix(
                 source_sha256=SOURCE_SHA,
                 destination_repository=DESTINATION,
                 attempt_id=attempt_id,
-                decision_fn=lambda _: ReviewDecision(case.decision),
+                decision_fn=lambda _: ReviewDecision(case.decision, manual_review_confirmed=case.result.route == "manual_review"),
                 on_timing=timings.__setitem__,
             )
         assert raised.value.code == case.expected_failure_code

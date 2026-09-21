@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -11,19 +11,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from feedback_triage import web
-from feedback_triage.analyze import analysis_fingerprint, analysis_fingerprint_inputs, file_sha256
-from feedback_triage.gemini_video import PROMPT
+from feedback_triage.analyze import AnalysisFailed, analysis_fingerprint, analysis_fingerprint_inputs, file_sha256
+from feedback_triage.gemini_video import GeminiClient, PROMPT
 from feedback_triage.github import GitHubApiError, GitHubIssue
 from feedback_triage.input_video import VideoInfo
 from feedback_triage.ledger import RunLedger
-from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, RoutedResult, VerifiedAnalysis, analysis_to_wire
+from feedback_triage.models import AnalysisResult, EvidenceFrameRecord, IssuePayload, RoutedResult, VerifiedAnalysis, analysis_to_wire
 from tests.test_completion_trust import VALID_ANALYSIS_JSON
 
 
-def routed(candidate_id: str, route: str, *, evidence_count: int = 1) -> RoutedResult:
+def routed(candidate_id: str, route: str, *, evidence_count: int = 1, duplicate_span: bool = False) -> RoutedResult:
     evidence = [
         {
-            "start_seconds": float(index + 1),
+            "start_seconds": 1.0 if duplicate_span and index == 1 else float(index + 1),
             "end_seconds": float(index + 2),
             "keyframe_seconds": float(index + 1.5),
             "client_quote": "Please make this clearer.",
@@ -58,14 +58,28 @@ def routed(candidate_id: str, route: str, *, evidence_count: int = 1) -> RoutedR
 @dataclass
 class FakeGateway:
     create_calls: int = 0
+    find_calls: list[tuple[str, str]] = dataclass_field(default_factory=list)
+    get_calls: list[tuple[str, int]] = dataclass_field(default_factory=list)
+    find_result: tuple[GitHubIssue, ...] = ()
+    find_error: Exception | None = None
+    get_result: GitHubIssue | None = None
+    get_error: Exception | None = None
 
     def find_marker(self, destination_repository: str, marker: str) -> tuple[GitHubIssue, ...]:
-        return ()
+        self.find_calls.append((destination_repository, marker))
+        if self.find_error is not None:
+            raise self.find_error
+        return self.find_result
 
     def get_issue(self, destination_repository: str, issue_number: int) -> GitHubIssue:
-        raise AssertionError("the fake has no adopted Issues")
+        self.get_calls.append((destination_repository, issue_number))
+        if self.get_error is not None:
+            raise self.get_error
+        if self.get_result is None:
+            raise AssertionError("the fake has no adopted Issues")
+        return self.get_result
 
-    def create_issue(self, destination_repository: str, payload: Any) -> GitHubIssue:
+    def create_issue(self, destination_repository: str, payload: IssuePayload) -> GitHubIssue:
         self.create_calls += 1
         return GitHubIssue(
             destination_repository=destination_repository,
@@ -120,7 +134,12 @@ class BrowserGeminiGateway:
         self.interactions = BrowserGeminiInteractions(analysis)
 
 
-def install_fake_analysis(monkeypatch: pytest.MonkeyPatch, seen_clients: list[object] | None = None) -> None:
+def install_fake_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+    seen_clients: list[object] | None = None,
+    *,
+    duplicate_span: bool = False,
+) -> None:
     def fake_probe(video: Path) -> VideoInfo:
         return VideoInfo(path=video, duration_seconds=42.0)
 
@@ -150,19 +169,20 @@ def install_fake_analysis(monkeypatch: pytest.MonkeyPatch, seen_clients: list[ob
         analysis = {"schema_version": "1.0", "video_summary": "A short review recording.", "observations": []}
         ledger.complete(attempt_id, analysis, processing_pair_count=2)
         candidates = (
-            routed("cand_aaaaaaaaaaaaaaaa", "candidate", evidence_count=2),
+            routed("cand_aaaaaaaaaaaaaaaa", "candidate", evidence_count=2, duplicate_span=duplicate_span),
             routed("cand_bbbbbbbbbbbbbbbb", "clarification_request"),
-            routed("cand_cccccccccccccccc", "manual_review"),
+            routed("cand_cccccccccccccccc", "manual_review", evidence_count=0),
             routed("cand_dddddddddddddddd", "withheld_result"),
         )
         ledger.record_policy_result(attempt_id, {"schema_version": "1.0", "results": [candidate.model_dump(mode="json") for candidate in candidates]})
         frame_path = output / source_sha256 / "evidence-frames" / "frame.png"
         frame_path.parent.mkdir(parents=True, exist_ok=True)
         frame_path.write_bytes(b"png")
-        ledger.record_evidence_frame(
-            attempt_id,
-            EvidenceFrameRecord(candidate_id=candidates[0].candidate_id, timestamp_seconds=1.5, status="extracted", path=str(frame_path)),
-        )
+        for candidate in (candidates[0], candidates[2]):
+            ledger.record_evidence_frame(
+                attempt_id,
+                EvidenceFrameRecord(candidate_id=candidate.candidate_id, timestamp_seconds=1.5, status="extracted", path=str(frame_path)),
+            )
         verified = VerifiedAnalysis.model_validate({"analysis": analysis, "processing_pair_count": 2, "gemini_usage": {"input_tokens": 10}})
         return VideoInfo(path=video, duration_seconds=42.0), verified, ledger
 
@@ -189,7 +209,7 @@ def test_browser_workflow_groups_seeks_approves_and_publishes(tmp_path: Path, mo
     install_fake_analysis(monkeypatch, seen_clients)
     gateway = FakeGateway()
     settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=gemini_client, github_gateway=gateway)) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, gemini_client), github_gateway=gateway)) as client:
         assert client.get("/api/health").json() == {"status": "ok"}
         invalid = client.post("/api/recordings", files={"file": ("notes.txt", b"not video", "text/plain")})
         assert invalid.status_code == 415
@@ -202,31 +222,33 @@ def test_browser_workflow_groups_seeks_approves_and_publishes(tmp_path: Path, mo
         started = client.post(f"/api/recordings/{recording_id}/analyze")
         assert started.status_code == 202
         ready = wait_for_status(client, recording_id, "ready_for_review")
+        assert gateway.create_calls == 0
         assert all(stage["state"] == "completed" for stage in ready["stages"])
         assert [group["label"] for group in ready["groups"]] == ["Candidate", "Clarification Request", "Manual Review", "Withheld Result"]
-        candidate = ready["groups"][0]["candidates"][0]
+        candidate = ready["groups"][0]["routed_results"][0]
         assert len(candidate["evidence_spans"]) == 2
         assert candidate["evidence_spans"][0]["start_seconds"] == 1.0
         assert candidate["evidence_frame"]["status"] == "extracted"
         assert client.get(candidate["evidence_frame"]["url"]).status_code == 200
 
         preview = client.post(
-            f"/api/recordings/{recording_id}/candidates/{candidate['candidate_id']}/approval-preview",
+            f"/api/recordings/{recording_id}/routed-results/{candidate['candidate_id']}/approval-preview",
             json={"action": "approve", "changes": {"title": "Approved title"}},
         )
         assert preview.status_code == 200
         assert preview.json()["payload"]["title"] == "Approved title"
 
         reviewed = client.post(
-            f"/api/recordings/{recording_id}/candidates/{candidate['candidate_id']}/review",
+            f"/api/recordings/{recording_id}/routed-results/{candidate['candidate_id']}/review",
             json={"action": "approve", "changes": {"title": "Approved title"}},
         )
         assert reviewed.status_code == 200
-        assert reviewed.json()["recording"]["groups"][0]["candidates"][0]["decision"] == "approved"
+        assert reviewed.json()["recording"]["groups"][0]["routed_results"][0]["decision"] == "approved"
         assert client.post(
-            f"/api/recordings/{recording_id}/candidates/cand_bbbbbbbbbbbbbbbb/review",
+            f"/api/recordings/{recording_id}/routed-results/cand_bbbbbbbbbbbbbbbb/review",
             json={"action": "approve"},
         ).status_code == 409
+        assert gateway.create_calls == 0
 
         published = client.post(
             f"/api/recordings/{recording_id}/publish",
@@ -243,7 +265,7 @@ def test_browser_uses_injected_gemini_through_real_analysis_pipeline(tmp_path: P
     source = Path("fixtures/canonical/feedback-recording.mp4")
     gateway = BrowserGeminiGateway()
     settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=gateway, github_gateway=FakeGateway())) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, gateway), github_gateway=FakeGateway())) as client:
         uploaded = client.post(
             "/api/recordings",
             files={"file": (source.name, source.read_bytes(), "video/mp4")},
@@ -254,7 +276,7 @@ def test_browser_uses_injected_gemini_through_real_analysis_pipeline(tmp_path: P
         ready = wait_for_status(client, recording_id, "ready_for_review")
 
         assert gateway.interactions.created_ids == ["browser-interaction-1"]
-        assert ready["groups"][0]["candidates"]
+        assert ready["groups"][0]["routed_results"]
         assert all(stage["state"] == "completed" for stage in ready["stages"])
 
 
@@ -279,7 +301,7 @@ def test_fingerprint_mismatch_has_an_explicit_reanalysis_recovery_path(tmp_path:
     )
     gateway = BrowserGeminiGateway()
     settings = web.WebSettings(input_root=input_root, output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=gateway, github_gateway=FakeGateway())) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, gateway), github_gateway=FakeGateway())) as client:
         stale = client.get("/api/recordings").json()
         recording_id = next(recording["recording_id"] for recording in stale if recording["recording_id"].startswith("ledger-"))
         assert client.get(f"/api/recordings/{recording_id}").json()["failure"]["code"] == "fingerprint_mismatch"
@@ -293,29 +315,54 @@ def test_fingerprint_mismatch_has_an_explicit_reanalysis_recovery_path(tmp_path:
 def test_manual_review_requires_explicit_confirmation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     install_fake_analysis(monkeypatch)
     settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=object(), github_gateway=FakeGateway())) as client:
+    gateway = FakeGateway()
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=gateway)) as client:
         uploaded = client.post("/api/recordings", files={"file": ("walkthrough.mp4", b"video", "video/mp4")})
         recording_id = uploaded.json()["recording_id"]
         client.post(f"/api/recordings/{recording_id}/analyze")
         ready = wait_for_status(client, recording_id, "ready_for_review")
-        manual = next(candidate for group in ready["groups"] if group["key"] == "manual_review" for candidate in group["candidates"])
+        manual = next(candidate for group in ready["groups"] if group["key"] == "manual_review" for candidate in group["routed_results"])
 
         blocked = client.post(
-            f"/api/recordings/{recording_id}/candidates/{manual['candidate_id']}/approval-preview",
+            f"/api/recordings/{recording_id}/routed-results/{manual['candidate_id']}/approval-preview",
             json={"action": "approve"},
         )
         assert blocked.status_code == 409
         assert blocked.json()["detail"]["code"] == "manual_review_confirmation_required"
 
+        no_op = client.post(
+            f"/api/recordings/{recording_id}/routed-results/{manual['candidate_id']}/approval-preview",
+            json={"action": "approve", "changes": {"title": f"  {manual['title']}  "}},
+        )
+        assert no_op.status_code == 409
+        assert no_op.json()["detail"]["code"] == "manual_review_confirmation_required"
+        declined = client.post(
+            f"/api/recordings/{recording_id}/routed-results/{manual['candidate_id']}/review",
+            json={"action": "decline"},
+        )
+        assert declined.status_code == 200
+        assert gateway.create_calls == 0
+
+        material = client.post(
+            f"/api/recordings/{recording_id}/routed-results/{manual['candidate_id']}/approval-preview",
+            json={"action": "approve", "changes": {"title": "A materially edited Manual Review"}},
+        )
+        assert material.status_code == 200
+        assert material.json()["manual_review_confirmed"] is True
+
         confirmed = client.post(
-            f"/api/recordings/{recording_id}/candidates/{manual['candidate_id']}/approval-preview",
+            f"/api/recordings/{recording_id}/routed-results/{manual['candidate_id']}/approval-preview",
             json={"action": "approve", "manual_review_confirmed": True},
         )
         assert confirmed.status_code == 200
         assert confirmed.json()["manual_review_confirmed"] is True
         reviewed = client.post(
-            f"/api/recordings/{recording_id}/candidates/{manual['candidate_id']}/review",
-            json={"action": "approve", "manual_review_confirmed": True},
+            f"/api/recordings/{recording_id}/routed-results/{manual['candidate_id']}/review",
+            json={
+                "action": "approve",
+                "changes": {"title": "A materially edited Manual Review"},
+                "manual_review_confirmed": True,
+            },
         )
         assert reviewed.status_code == 200
         published = client.post(
@@ -323,6 +370,7 @@ def test_manual_review_requires_explicit_confirmation(tmp_path: Path, monkeypatc
             json={"candidate_ids": [manual["candidate_id"]]},
         )
         assert published.status_code == 200
+        assert gateway.create_calls == 1
 
 
 def test_completed_input_ledger_is_opened_without_analysis(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -350,7 +398,7 @@ def test_completed_input_ledger_is_opened_without_analysis(tmp_path: Path, monke
     monkeypatch.setattr(web, "probe_video", lambda video: VideoInfo(path=video, duration_seconds=12.0))
     monkeypatch.setattr(web, "triage_recording", lambda *_args, **_kwargs: pytest.fail("opened ledgers must not rerun analysis"))
     settings = web.WebSettings(input_root=input_root, output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=object(), github_gateway=FakeGateway())) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=FakeGateway())) as client:
         recordings = client.get("/api/recordings").json()
         opened = next(recording for recording in recordings if recording["recording_id"].startswith("ledger-"))
         assert opened["status"] == "ready_for_review"
@@ -382,7 +430,7 @@ def test_stale_completed_input_ledger_is_fail_closed(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr(web, "probe_video", lambda video: VideoInfo(path=video, duration_seconds=12.0))
     settings = web.WebSettings(input_root=input_root, output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=object(), github_gateway=FakeGateway())) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=FakeGateway())) as client:
         recordings = client.get("/api/recordings").json()
         stale = next(recording for recording in recordings if recording["recording_id"].startswith("ledger-"))
         assert stale["status"] == "failed"
@@ -419,7 +467,7 @@ def test_superseded_input_ledger_does_not_reopen_an_older_policy_result(
 
     monkeypatch.setattr(web, "probe_video", lambda video: VideoInfo(path=video, duration_seconds=12.0))
     settings = web.WebSettings(input_root=input_root, output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=object(), github_gateway=FakeGateway())) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=FakeGateway())) as client:
         recordings = client.get("/api/recordings").json()
         assert not any(recording["recording_id"].startswith("ledger-") for recording in recordings)
 
@@ -448,14 +496,14 @@ def test_publish_failure_preserves_review_and_retry_state(tmp_path: Path, monkey
             raise GitHubApiError("GitHub rejected the request")
 
     settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
-    with TestClient(web.create_app(settings, gemini_client=object(), github_gateway=FailingGateway())) as client:
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=FailingGateway())) as client:
         uploaded = client.post("/api/recordings", files={"file": ("walkthrough.mp4", b"video", "video/mp4")})
         recording_id = uploaded.json()["recording_id"]
         client.post(f"/api/recordings/{recording_id}/analyze")
         ready = wait_for_status(client, recording_id, "ready_for_review")
-        candidate = ready["groups"][0]["candidates"][0]
+        candidate = ready["groups"][0]["routed_results"][0]
         assert client.post(
-            f"/api/recordings/{recording_id}/candidates/{candidate['candidate_id']}/review",
+            f"/api/recordings/{recording_id}/routed-results/{candidate['candidate_id']}/review",
             json={"action": "approve"},
         ).status_code == 200
         failed = client.post(
@@ -467,4 +515,65 @@ def test_publish_failure_preserves_review_and_retry_state(tmp_path: Path, monkey
         detail = client.get(f"/api/recordings/{recording_id}").json()
         assert detail["status"] == "ready_for_review"
         assert detail["failure"]["code"] == "external_write_uncertain"
-        assert detail["groups"][0]["candidates"][0]["decision"] == "approved"
+        assert detail["groups"][0]["routed_results"][0]["decision"] == "approved"
+
+
+@pytest.mark.parametrize(
+    ("code", "message"),
+    (
+        ("output_invalid", "malformed model output"),
+        ("policy_failed", "policy failure"),
+        ("attempt_unreconciled", "recoverable interaction reconciliation"),
+        ("frame_failed", "Evidence Frame failure"),
+    ),
+)
+def test_analysis_failure_codes_are_stable_and_do_not_write_issues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    code: str,
+    message: str,
+) -> None:
+    install_fake_analysis(monkeypatch)
+
+    def fail_analysis(*_: object, **__: object) -> None:
+        raise AnalysisFailed(code, message)
+
+    monkeypatch.setattr(web, "triage_recording", fail_analysis)
+    gateway = FakeGateway()
+    settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=gateway)) as client:
+        uploaded = client.post("/api/recordings", files={"file": ("walkthrough.mp4", b"video", "video/mp4")})
+        recording_id = uploaded.json()["recording_id"]
+        assert client.post(f"/api/recordings/{recording_id}/analyze").status_code == 202
+        failed = wait_for_status(client, recording_id, "failed")
+        assert failed["failure"]["code"] == code
+        assert gateway.create_calls == 0
+        assert gateway.find_calls == []
+        assert gateway.get_calls == []
+
+
+def test_github_read_failure_has_stable_code_and_does_not_create_issue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_fake_analysis(monkeypatch)
+    gateway = FakeGateway(find_error=GitHubApiError("GitHub read failed"))
+    settings = web.WebSettings(output_root=tmp_path, github_repository="Demo/Feedback")
+    with TestClient(web.create_app(settings, gemini_client=cast(GeminiClient, object()), github_gateway=gateway)) as client:
+        uploaded = client.post("/api/recordings", files={"file": ("walkthrough.mp4", b"video", "video/mp4")})
+        recording_id = uploaded.json()["recording_id"]
+        client.post(f"/api/recordings/{recording_id}/analyze")
+        ready = wait_for_status(client, recording_id, "ready_for_review")
+        candidate = ready["groups"][0]["routed_results"][0]
+        assert client.post(
+            f"/api/recordings/{recording_id}/routed-results/{candidate['candidate_id']}/review",
+            json={"action": "approve"},
+        ).status_code == 200
+        failed = client.post(
+            f"/api/recordings/{recording_id}/publish",
+            json={"candidate_ids": [candidate["candidate_id"]]},
+        )
+        assert failed.status_code == 409
+        assert failed.json()["detail"]["code"] == "external_write_uncertain"
+        assert gateway.create_calls == 0
+        assert len(gateway.find_calls) == 1
+        assert gateway.get_calls == []

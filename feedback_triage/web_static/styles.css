@@ -135,7 +135,7 @@ dd { margin: 0; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
 .decision-chip { display: inline-flex; margin-top: 7px; padding: 2px 7px; border-radius: 999px; background: #effaf3; color: #23633c; font-size: 0.68rem; font-weight: 750; }
 .decision-chip.declined { background: #fff5f5; color: var(--danger); }
 .empty-detail { display: grid; min-height: 300px; place-items: center; padding: 30px; color: var(--muted); text-align: center; }
-.candidate-title { margin: 0 0 12px; font-size: 1.25rem; letter-spacing: -0.02em; }
+.routed-result-title { margin: 0 0 12px; font-size: 1.25rem; letter-spacing: -0.02em; }
 .detail-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .meta-chip { padding: 4px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 0.7rem; }
 .detail-section { margin-top: 18px; }

@@ -543,7 +543,13 @@ def test_acceptance_cli_runs_the_exact_three_step_sequence(
     )
     monkeypatch.setattr(analysis_module, "file_sha256", lambda path: CANONICAL_SOURCE)
     monkeypatch.setattr(analysis_module, "extract_evidence_frame", extract_frame)
-    monkeypatch.setattr(cli, "terminal_review_decision", lambda candidate_result, **kwargs: ReviewDecision("approve"))
+    monkeypatch.setattr(
+        cli,
+        "terminal_review_decision",
+        lambda candidate_result, **kwargs: ReviewDecision(
+            "approve", manual_review_confirmed=candidate_result.route == "manual_review"
+        ),
+    )
 
     assert cli.analyze_main(analyze_args) == 0
     capsys.readouterr()
@@ -595,7 +601,7 @@ def test_run_creates_exactly_three_issues_after_visual_review(
 
     def approve(candidate_result: Any, **kwargs: Any) -> ReviewDecision:
         reviewed_ids.append(candidate_result.candidate_id)
-        return ReviewDecision("approve")
+        return ReviewDecision("approve", manual_review_confirmed=candidate_result.route == "manual_review")
 
     monkeypatch.setattr(cli, "terminal_review_decision", approve)
 

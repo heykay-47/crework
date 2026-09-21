@@ -12,6 +12,13 @@ ObservationType = Literal["bug", "change_request", "feature_request", "question"
 Intent = Literal["explicit_change", "explicit_problem", "ambiguous_reaction", "question", "decision", "none"]
 Route = Literal["candidate", "manual_review", "clarification_request", "withheld_result"]
 EvidenceFrameStatus = Literal["extracted", "failed"]
+WriteState = Literal[
+    "write_pending",
+    "written",
+    "write_failed",
+    "write_uncertain",
+    "external_write_conflict",
+]
 
 SOURCE_SHA256_PATTERN = r"^[0-9a-f]{64}$"
 CANDIDATE_ID_PATTERN = r"^cand_[0-9a-f]{16}$"

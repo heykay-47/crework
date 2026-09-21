@@ -413,7 +413,7 @@ def test_acceptance_fresh_review_does_not_reuse_prior_manual_approval(tmp_path: 
 
     def approve(_: RoutedResult) -> ReviewDecision:
         prompted.append(manual.candidate_id)
-        return ReviewDecision("approve")
+        return ReviewDecision("approve", manual_review_confirmed=True)
 
     outcomes = WriteCoordinator(ledger_value, github).review_and_publish(
         [manual],

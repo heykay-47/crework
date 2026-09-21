@@ -116,7 +116,7 @@ def terminal_review_decision(
             emit("Evidence Frame: unavailable; visual confirmation is still required.")
         choice = prompt("Manual Review: [c]onfirm, [e]dit prose, or [d]ecline? ").strip().lower()
         if choice in {"c", "confirm", "y", "yes"}:
-            return ReviewDecision("approve")
+            return ReviewDecision("approve", manual_review_confirmed=True)
         if choice in {"e", "edit"}:
             changes: dict[str, object] = {}
             for field_name in ("title", "summary", "requested_outcome", "component"):
@@ -181,7 +181,6 @@ class WriteCoordinator:
         attempt_id: str,
         decision_fn: Callable[[RoutedResult], ReviewDecision],
         operator_label: str | None = None,
-        reconsider: bool = False,
         require_fresh_review: bool = False,
     ) -> tuple[ReviewOutcome, ...]:
         """Persist explicit review decisions without performing an external write.
@@ -229,18 +228,9 @@ class WriteCoordinator:
                     candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
                     payload_hash=default_approval.payload_hash,
                 )
-                if declined and not reconsider and not require_fresh_review:
+                if declined and not require_fresh_review:
                     outcomes.append(ReviewOutcome(candidate.candidate_id, "declined"))
                     continue
-                if reconsider and declined:
-                    self.ledger.record_reconsideration(
-                        attempt_id,
-                        source_sha256=source_sha256,
-                        candidate_id=default_approval.candidate_id,
-                        destination_repository=default_approval.destination_repository,
-                        candidate_snapshot_hash=default_approval.candidate_snapshot_hash,
-                        payload_hash=default_approval.payload_hash,
-                    )
                 decision = decision_fn(candidate)
                 if decision.action not in {"approve", "decline"}:
                     raise ValueError("review decision must be approve or decline")
@@ -382,7 +372,7 @@ class WriteCoordinator:
                         candidate,
                         destination_repository,
                         changes=decision.changes or None,
-                        manual_review_confirmed=candidate.route == "manual_review",
+                        manual_review_confirmed=decision.manual_review_confirmed,
                         operator_label=operator_label,
                     )
                     self.ledger.record_approval(attempt_id, approval)

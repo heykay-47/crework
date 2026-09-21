@@ -184,7 +184,7 @@ Policy routes each merged result in this order:
 4. visually inferred possible bugs and other medium-confidence actionable groups require **Manual Review**;
 5. high-confidence explicit changes and problems become Approval-eligible **Candidates**.
 
-Approval eligibility is only a route property; it is not Approval. Candidates may be approved explicitly, and Manual Review results require confirmation or editing first. Clarification Requests and Withheld Results cannot be approved. Every route, reason code, normalized evidence span, and selected Evidence Frame timestamp is printed by the command and stored under `policy_result` in the Run Ledger. Frame selection uses the earliest visual keyframe, then the earliest visual-span midpoint, then the earliest supplied keyframe, and finally the earliest normalized-span midpoint. FFmpeg is invoked without a shell; a nonzero exit, missing executable, timeout, or missing/empty output records an `EvidenceFrameRecord` with `status: "failed"` and an error. That failure is visible in the top-level `evidence_frames` output but leaves the Candidate route, verified attempt, and policy result intact. A policy contradiction records `policy_failed` and emits no routes; malformed model output records `output_invalid` before policy.
+Approval eligibility is only a route property; it is not Approval. Candidates may be approved explicitly, and Manual Review results require either the explicit confirmation control or an edit whose rendered Issue payload differs from the persisted result. Retyping the same value, adding only surrounding whitespace, or submitting any other no-op edit does not confirm Manual Review. Clarification Requests and Withheld Results cannot be approved. Every route, reason code, normalized evidence span, and selected Evidence Frame timestamp is printed by the command and stored under `policy_result` in the Run Ledger. Frame selection uses the earliest visual keyframe, then the earliest visual-span midpoint, then the earliest supplied keyframe, and finally the earliest normalized-span midpoint. FFmpeg is invoked without a shell; a nonzero exit, missing executable, timeout, or missing/empty output records an `EvidenceFrameRecord` with `status: "failed"` and an error. That failure is visible in the top-level `evidence_frames` output but leaves the Candidate route, verified attempt, and policy result intact. A policy contradiction records `policy_failed` and emits no routes; malformed model output records `output_invalid` before policy.
 
 Normal reruns never create a replacement interaction. They reuse an already verified result or retrieve the exact persisted interaction ID until it is reconciled. An attempt without a persisted interaction ID blocks further work. Use `--reanalyze` only when an intentionally fresh attempt is required; it appends to the Run Ledger and preserves every earlier attempt.
 
@@ -197,3 +197,19 @@ uv sync
 uv run python -m mypy feedback_triage main.py tests
 uv run python -m pytest
 ```
+
+The browser workflow uses the Playwright Python package in the development dependency group and injects fake Gemini/GitHub services, so it does not need credentials:
+
+```bash
+uv run pytest tests/test_browser.py -q
+```
+
+If Playwright or its Chromium executable is unavailable, the browser test reports an explicit skip. Install the executable when browser coverage is needed with `uv run playwright install chromium`.
+
+The container smoke test builds the supported image, runs it as the current host UID/GID with read-only `/input` and `/context` mounts and a writable `/output` mount, then checks `/api/health` and `/`:
+
+```bash
+uv run pytest tests/test_container.py -q
+```
+
+It reports an explicit skip when the Docker CLI or daemon is unavailable.

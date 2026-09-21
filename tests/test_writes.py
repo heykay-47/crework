@@ -89,6 +89,12 @@ def test_manual_review_requires_confirmation_or_edit() -> None:
 
     with pytest.raises(ApprovalError, match="Manual Review"):
         build_approval("b" * 64, manual, "demo/feedback")
+    with pytest.raises(ApprovalError, match="Manual Review"):
+        build_approval("b" * 64, manual, "demo/feedback", changes={"title": manual.title + " "})
+    with pytest.raises(ApprovalError, match="Manual Review"):
+        build_approval("b" * 64, manual, "demo/feedback", changes={"summary": manual.summary})
+    with pytest.raises(ApprovalError, match="Manual Review"):
+        build_approval("b" * 64, manual, "demo/feedback", changes={"summary": f"  {manual.summary}  "})
 
     approved = build_approval(
         "b" * 64,
@@ -97,6 +103,26 @@ def test_manual_review_requires_confirmation_or_edit() -> None:
         manual_review_confirmed=True,
     )
     assert approved.manual_review_confirmed is True
+
+    edited = build_approval(
+        "b" * 64,
+        manual,
+        "demo/feedback",
+        changes={"title": "A materially different title"},
+    )
+    assert edited.manual_review_confirmed is True
+
+
+def test_candidate_edits_never_persist_manual_review_confirmation() -> None:
+    approved = build_approval(
+        "b" * 64,
+        candidate(),
+        "demo/feedback",
+        changes={"title": "A materially different title"},
+        manual_review_confirmed=True,
+    )
+
+    assert approved.manual_review_confirmed is False
 
 
 def test_clarification_and_withheld_results_cannot_be_approved() -> None:

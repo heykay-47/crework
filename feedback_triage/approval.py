@@ -73,16 +73,21 @@ def render_issue_payload(candidate: RoutedResult, source_sha256: str) -> IssuePa
             f"{quote}; visual: {visual}"
         )
 
-    acceptance = "\n".join(f"- {criterion}" for criterion in candidate.acceptance_criteria)
+    criteria = tuple(criterion.strip() for criterion in candidate.acceptance_criteria if criterion.strip())
+    acceptance = "\n".join(f"- {criterion}" for criterion in criteria)
     if not acceptance:
         acceptance = "- No acceptance criterion was provided."
-    requested_outcome = candidate.requested_outcome or "No requested outcome was provided."
+    requested_outcome = candidate.requested_outcome.strip() if candidate.requested_outcome else ""
+    requested_outcome = requested_outcome or "No requested outcome was provided."
+    summary = candidate.summary.strip()
+    component = candidate.component.strip() if candidate.component else ""
+    component = component or "Not specified"
     body = "\n".join(
         [
             marker,
             "",
             "## Summary",
-            candidate.summary,
+            summary,
             "",
             "## Requested outcome",
             requested_outcome,
@@ -91,7 +96,7 @@ def render_issue_payload(candidate: RoutedResult, source_sha256: str) -> IssuePa
             acceptance,
             "",
             "## Component",
-            candidate.component or "Not specified",
+            component,
             "",
             "## Source evidence",
             f"- Source SHA-256: `{source_sha256}`",
@@ -136,15 +141,16 @@ def build_approval(
 
     destination = normalize_destination(destination_repository)
     reviewed_candidate = candidate if changes is None else edit_candidate(candidate, changes)
-    confirmed = manual_review_confirmed or changes is not None
-    if reviewed_candidate.route == "manual_review" and not confirmed:
-        raise ApprovalError("Manual Review must be confirmed or edited before Approval")
     if reviewed_candidate.route not in {"candidate", "manual_review"}:
         raise ApprovalError("Clarification Requests and Withheld Results cannot be approved")
     if reviewed_candidate.route == "candidate" and not reviewed_candidate.approval_eligible:
         raise ApprovalError("only policy-admitted Candidates may be approved")
     candidate_payload = render_issue_payload(candidate, source_sha256)
     payload = render_issue_payload(reviewed_candidate, source_sha256)
+    edit_confirms = changes is not None and payload != candidate_payload
+    confirmed = reviewed_candidate.route == "manual_review" and (manual_review_confirmed or edit_confirms)
+    if reviewed_candidate.route == "manual_review" and not confirmed:
+        raise ApprovalError("Manual Review must be confirmed or edited before Approval")
     timestamp = approved_at or datetime.now(UTC).isoformat()
     return Approval(
         source_sha256=source_sha256,
