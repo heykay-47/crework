@@ -150,6 +150,7 @@
 ## [OUTCOMES]
 
 - 2026-09-22T03:56:34+00:00 [TOOL] The simple web visual redesign was committed as `2a1e824` (`Simplify local review web UI`) and pushed to `origin/main` with author/committer `heykay-47 <krithick008@proton.me>`; remote `main` resolves to `2a1e824f3cb6f2ed0138a488e7a76951f81dc06a`.
+- 2026-09-22T03:57:25+00:00 [TOOL] The follow-up continuity record was committed as `f19061c` (`Record web redesign release`) and pushed to `origin/main`; the final remote `main` tip is `f19061c0001e1a32855dcd0782d9c22dc5c9659d`.
 - 2026-09-22T00:51:57+00:00 [TOOL] Manual client-facing test is partially successful: analysis and review paths work for `llmbid-feedback.mp4`, local Approval persistence is correct, and immutable non-approvable routes render correctly. It is not a clean end-to-end pass until the post-Approval browser state crash is fixed; no external GitHub Issue was created.
 - 2026-09-22T01:13:51+00:00 [TOOL] Simple visual redesign is live in the Docker web app and manually verified at desktop and mobile widths. No external writes were attempted; the previously recorded post-Approval response-shape crash remains out of scope for this visual-only pass.
 - 2026-09-21T20:08:45+00:00 [TOOL] Issue #21 shipped in commits `19ce2e0`, `c7a642d`, `b215193`, `03f088d`, `3a7b332`, and `aa691ca`. It centralizes approval confirmation, adds routed-result timeline fallback/API terminology/type/lifecycle cleanup, and adds browser/container verification seams with README/dependency updates. Worktree is clean; local `main` is eight commits ahead of `origin/main`.
