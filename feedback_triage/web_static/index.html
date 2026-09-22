@@ -4,15 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#102a43" />
-    <title>Feedback Recording review</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>Feedback recordings</title>
+    <link rel="stylesheet" href="/styles.css?v=3" />
   </head>
   <body>
     <header class="app-header">
       <div>
         <p class="eyebrow">CREWORK / LOCAL WORKSPACE</p>
-        <h1>Feedback Recording review</h1>
-        <p class="lede">Turn one trusted recording into reviewable, evidence-linked decisions.</p>
+        <h1>Feedback recordings</h1>
+        <p class="lede">Review the source, inspect the evidence, and approve only what is ready.</p>
       </div>
       <button id="new-recording" class="button button-quiet" type="button">New recording</button>
     </header>
@@ -22,19 +22,19 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">01 / SOURCE</p>
-            <h2 id="upload-heading">Add a Feedback Recording</h2>
+            <h2 id="upload-heading">Add a recording</h2>
           </div>
           <span id="config-badge" class="status-badge">Checking local configuration...</span>
         </div>
         <label id="drop-zone" class="drop-zone" for="video-file">
           <span class="drop-icon" aria-hidden="true">+</span>
           <strong>Drop a video here</strong>
-          <span>or choose a file from this machine</span>
+          <span>or choose a file from this device</span>
           <span class="drop-hint">MP4, MOV, WebM, MKV, M4V, or AVI</span>
           <input id="video-file" type="file" accept="video/*,.mkv,.avi,.m4v" />
         </label>
         <div class="existing-recording">
-          <label for="recording-picker">Open an existing local recording or completed Run Ledger</label>
+          <label for="recording-picker">Or open a completed recording</label>
           <select id="recording-picker" aria-describedby="recording-picker-help">
             <option value="">Choose a persisted recording...</option>
           </select>
@@ -57,8 +57,8 @@
       <section id="analysis-panel" class="panel analysis-panel" aria-labelledby="analysis-heading" hidden>
         <div class="section-heading">
           <div>
-            <p class="eyebrow">02 / ANALYSIS</p>
-            <h2 id="analysis-heading">Verify before review</h2>
+            <p class="eyebrow">02 / CHECK</p>
+            <h2 id="analysis-heading">Verify the recording</h2>
           </div>
           <span id="recording-status" class="status-badge" aria-live="polite">Uploaded</span>
         </div>
@@ -87,7 +87,7 @@
         <div class="review-heading section-heading">
           <div>
             <p class="eyebrow">03 / REVIEW</p>
-            <h2 id="review-heading">Evidence-linked review</h2>
+            <h2 id="review-heading">Make a decision</h2>
             <p id="video-summary" class="lede"></p>
           </div>
           <div class="review-actions">
